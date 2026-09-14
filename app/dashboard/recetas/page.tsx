@@ -35,7 +35,6 @@ export default function RecetasPage() {
   const [draft, setDraft] = useState<Draft | null>(null);
 
   const load = async () => {
-    setLoading(true);
     const [{ data: r }, { data: si }, { data: c }, { data: s }] = await Promise.all([
       supabase.from("recipes").select("*").order("created_at", { ascending: false }),
       supabase.from("recipe_supply_items").select("*"),
@@ -49,7 +48,12 @@ export default function RecetasPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [supabase]);
+  useEffect(() => {
+    (async () => {
+      await load();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase]);
 
   const graph = useMemo(
     () => buildRecipeGraph(recipes, supplyItems, components, supplies),

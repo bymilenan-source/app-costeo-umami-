@@ -7,7 +7,7 @@ import { money } from "@/lib/costing";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useToast } from "@/lib/useToast";
-import { Card, Field, PrimaryButton, Toast, inputStyle } from "@/components/ui";
+import { Card, Toast, inputStyle } from "@/components/ui";
 import type { Order, Expense } from "@/lib/types";
 
 function monthKey(dateStr: string | null) {

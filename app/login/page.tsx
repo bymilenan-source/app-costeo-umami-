@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { COLORS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
@@ -70,7 +71,7 @@ function LoginForm() {
         </Card>
         <p className="text-center text-xs mt-4" style={{ color: "#8A7A75" }}>
           ¿No tienes cuenta? Solicítala desde{" "}
-          <a href="/" className="font-medium" style={{ color: COLORS.plum }}>la página principal</a>.
+          <Link href="/" className="font-medium" style={{ color: COLORS.plum }}>la página principal</Link>.
         </p>
       </div>
     </div>

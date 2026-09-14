@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Costeo UMAMI
 
-## Getting Started
+App de costeo, recetas y facturación para pasteleras y pequeños emprendimientos
+de comida. Construida con **Next.js** + **Supabase** (Postgres + Auth), con
+cuentas de usuaria privadas, panel de administración, sub-recetas, insumos
+separados de ingredientes y modo de factura fiscal (RNC/NCF).
 
-First, run the development server:
+## 1. Desarrollo local
 
 ```bash
+npm install
+cp .env.example .env.local   # completa con los valores de tu proyecto Supabase
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abre [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 2. Crear el proyecto en Supabase (una sola vez)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Entra a [app.supabase.com](https://app.supabase.com) y crea una cuenta / un proyecto nuevo (plan gratuito).
+2. En **Project Settings → API**, copia:
+   - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
+   - `anon public` key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `service_role` key → `SUPABASE_SERVICE_ROLE_KEY` (¡secreta, nunca la subas a git ni la pongas en el navegador!)
+3. Ve a **SQL Editor** y pega el contenido completo de `supabase/migrations/0001_init.sql`. Ejecútalo.
+   Esto crea todas las tablas, la seguridad por fila (RLS) y el trigger que crea
+   automáticamente un perfil cada vez que se registra una usuaria.
+4. En **Authentication → Providers**, deja solo "Email" habilitado (no se
+   necesita registro público: las cuentas las crea la administradora desde el
+   panel admin de la app).
 
-## Learn More
+### Crear tu propia cuenta de administradora
 
-To learn more about Next.js, take a look at the following resources:
+1. En **Authentication → Users** de Supabase, crea tu usuaria (tu correo +
+   una contraseña), o regístrala desde el panel admin una vez tengas otra
+   cuenta admin.
+2. En **SQL Editor**, ejecuta (cambia el correo):
+   ```sql
+   update public.profiles set role = 'owner', subscription_status = 'active'
+   where email = 'tu-correo@ejemplo.com';
+   ```
+3. Entra a la app con ese correo → verás el enlace "Panel admin" en el header.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Desde el panel admin puedes crear cuentas para tus usuarias (correo +
+contraseña temporal), ver sus fechas de pago/vencimiento y activar o
+desactivar su acceso.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 3. Desplegar en Vercel con tu propio dominio
 
-## Deploy on Vercel
+1. Sube este repositorio a GitHub (si no lo está ya).
+2. Entra a [vercel.com](https://vercel.com), crea una cuenta e importa el repositorio.
+3. En **Environment Variables** del proyecto en Vercel, agrega las mismas tres
+   variables de `.env.local` (`NEXT_PUBLIC_SUPABASE_URL`,
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`).
+4. Despliega. Vercel te da un link tipo `tu-app.vercel.app` funcionando de inmediato.
+5. Compra tu dominio (Namecheap, Google Domains, GoDaddy, etc. — el
+   presupuesto estimado es de US$8–15 el registro inicial + US$15–20/año en
+   renovación).
+6. En Vercel: **Project → Settings → Domains** → agrega tu dominio. Vercel te
+   da los registros DNS (A/CNAME) que debes copiar a la configuración de tu
+   dominio en el registrador. La propagación puede tardar unas horas.
+7. Cuando el dominio quede activo, tu app vive ahí de forma permanente,
+   accesible desde cualquier navegador (celular incluido), sin depender de
+   ninguna plataforma externa para el uso diario.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**Costos aproximados** (igual a lo estimado en la especificación): Vercel y
+Supabase en plan gratuito mientras el número de usuarias sea bajo; cuando se
+supere el plan gratuito, unos US$25–45/mes combinados. El dominio es aparte
+(ver punto 5).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 4. Estructura del proyecto
+
+- `supabase/migrations/0001_init.sql` — esquema completo de base de datos y seguridad (RLS).
+- `lib/costing.ts` — cálculo de costos, incluyendo sub-recetas anidadas con detección de ciclos.
+- `lib/supabase/` — clientes de Supabase (navegador, servidor, admin).
+- `app/page.tsx` — landing pública + formulario de solicitud de suscripción.
+- `app/login/page.tsx` — inicio de sesión.
+- `app/dashboard/` — la app en sí (Resumen, Ingredientes, Insumos, Recetas, Pedidos/Facturas, Mi Negocio), protegida por sesión y por estado de suscripción.
+- `app/admin/` — panel de administración (solo para el rol `owner`).
+
+## 5. Modelo de datos clave
+
+- **Ingredientes e insumos** viven en una sola tabla `supplies` distinguidos
+  por `kind` (`ingrediente` | `insumo`), para que el costo de comida y el de
+  empaque siempre se muestren en líneas separadas.
+- **Sub-recetas**: una receta puede usar otra receta guardada como
+  componente (`recipe_components`), indicando qué fracción de esa receta se
+  usa (ej. `0.25` = 1/4 de la receta). El costo se recalcula recursivamente.
+- **Factura fiscal**: cada pedido guarda su propio `invoice_mode`
+  (`simple` | `fiscal`) y, si es fiscal, el campo `ncf` se escribe a mano por
+  la usuaria — nunca se autogenera ni se autoincrementa, tal como lo pide la
+  especificación (cada negocio maneja su propia numeración autorizada por la DGII).
+
+## 6. Antes de lanzar
+
+Antes del lanzamiento comercial, probar con 2-3 usuarias reales (no solo la
+administradora) durante al menos una semana para detectar fricciones de uso,
+según lo indicado en la especificación original del proyecto.

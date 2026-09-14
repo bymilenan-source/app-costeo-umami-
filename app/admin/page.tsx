@@ -25,7 +25,6 @@ export default function AdminPage() {
   const [newUser, setNewUser] = useState({ businessName: "", email: "", password: "" });
 
   const load = async () => {
-    setLoading(true);
     const [{ data: u }, { data: r }] = await Promise.all([
       supabase.from("profiles").select("*").order("created_at", { ascending: false }),
       supabase.from("subscription_requests").select("*").order("created_at", { ascending: false }),
@@ -35,7 +34,12 @@ export default function AdminPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [supabase]);
+  useEffect(() => {
+    (async () => {
+      await load();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase]);
 
   const setSubscription = async (id: string, patch: Partial<Profile>) => {
     const { error } = await supabase.from("profiles").update(patch).eq("id", id);
