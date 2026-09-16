@@ -42,4 +42,4 @@ export const MONTH_NAMES = [
 
 export const UNITS = ["g", "kg", "ml", "l", "unidad", "oz", "lb"];
 
-export const uid = () => Math.random().toString(36).slice(2, 10);
+export const uid = () => crypto.randomUUID();
