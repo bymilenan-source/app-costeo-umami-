@@ -16,6 +16,7 @@ export interface Profile {
   address: string;
   template: string;
   monthly_goal: number;
+  logo_url: string;
   rnc: string;
   invoice_mode: InvoiceMode;
   role: Role;

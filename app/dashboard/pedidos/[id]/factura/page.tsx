@@ -53,13 +53,24 @@ export default function FacturaPage() {
       </div>
 
       <div style={{ background: t.body, border: "1px solid #E4D8C6", borderRadius: 16, overflow: "hidden" }} className="shadow-sm">
-        <div style={{ background: t.header, color: t.text }} className="px-6 py-5 flex items-start justify-between">
-          <div>
-            <div style={{ fontFamily: "var(--font-fraunces)" }} className="text-xl font-semibold">{profile.business_name}</div>
-            <div className="text-xs opacity-90 mt-0.5">{profile.tagline}</div>
-            {isFiscal && profile.rnc && <div className="text-[11px] opacity-90 mt-1">RNC: {profile.rnc}</div>}
+        <div style={{ background: t.header, color: t.text }} className="px-6 py-5 flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            {profile.logo_url && (
+              <div
+                className="shrink-0 overflow-hidden"
+                style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(255,255,255,0.15)" }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={profile.logo_url} alt={profile.business_name} className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div>
+              <div style={{ fontFamily: "var(--font-fraunces)" }} className="text-xl font-semibold">{profile.business_name}</div>
+              <div className="text-xs opacity-90 mt-0.5">{profile.tagline}</div>
+              {isFiscal && profile.rnc && <div className="text-[11px] opacity-90 mt-1">RNC: {profile.rnc}</div>}
+            </div>
           </div>
-          <div className="text-right text-[11px] opacity-90 leading-relaxed">
+          <div className="text-right text-[11px] opacity-90 leading-relaxed shrink-0">
             {profile.phone && <div>{profile.phone}</div>}
             {profile.instagram && <div>{profile.instagram}</div>}
             {profile.address && <div>{profile.address}</div>}

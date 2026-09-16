@@ -29,11 +29,22 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     <div style={{ background: COLORS.cream, minHeight: "100vh" }}>
       <header style={{ background: COLORS.plum }} className="px-5 pt-6 pb-5 sticky top-0 z-20 shadow-sm print:hidden">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div>
-            <div style={{ fontFamily: "var(--font-fraunces)" }} className="text-white text-2xl font-semibold tracking-tight">
-              {profile.business_name || "Mi Emprendimiento"}
+          <div className="flex items-center gap-3">
+            {profile.logo_url && (
+              <div
+                className="shrink-0 overflow-hidden"
+                style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.15)" }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={profile.logo_url} alt={profile.business_name} className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div>
+              <div style={{ fontFamily: "var(--font-fraunces)" }} className="text-white text-2xl font-semibold tracking-tight">
+                {profile.business_name || "Mi Emprendimiento"}
+              </div>
+              <div style={{ color: COLORS.blush }} className="text-xs mt-0.5">Costeo, precios y facturas en un solo lugar</div>
             </div>
-            <div style={{ color: COLORS.blush }} className="text-xs mt-0.5">Costeo, precios y facturas en un solo lugar</div>
           </div>
           <div className="flex items-center gap-3">
             {profile.role === "owner" && (
