@@ -61,6 +61,7 @@ export function SupplyList({ kind }: { kind: SupplyKind }) {
       unit: item.unit,
       purchaseCost: String(item.purchase_cost),
     });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const cancelEdit = () => {
