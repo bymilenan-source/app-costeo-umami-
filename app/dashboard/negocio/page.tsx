@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { ImagePlus, X } from "lucide-react";
+import Link from "next/link";
+import { Eye, ImagePlus, X } from "lucide-react";
 import { COLORS, TEMPLATES } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
@@ -161,7 +162,16 @@ export default function NegocioPage() {
       </Card>
 
       <Card>
-        <span className="text-[11px] font-medium block mb-2" style={{ color: "#7A6B66" }}>Diseño de factura</span>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[11px] font-medium" style={{ color: "#7A6B66" }}>Diseño de factura</span>
+          <Link
+            href="/dashboard/negocio/vista-previa"
+            className="text-xs font-semibold flex items-center gap-1"
+            style={{ color: COLORS.plum }}
+          >
+            <Eye size={14} /> Vista previa
+          </Link>
+        </div>
         <p className="text-[11px] mb-2" style={{ color: "#8A7A75" }}>Se guarda al instante, no hace falta tocar &quot;Guardar cambios&quot;.</p>
         <div className="grid grid-cols-2 gap-2">
           {TEMPLATES.map((t) => (
