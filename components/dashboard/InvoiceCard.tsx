@@ -66,7 +66,7 @@ export function InvoiceCard({ profile, order }: { profile: Profile; order: Invoi
             {order.client_phone && <div className="text-xs" style={{ color: "#8A7A75" }}>{order.client_phone}</div>}
           </div>
           <div className="text-right">
-            <div className="text-[10px] font-bold px-2.5 py-1 rounded-full inline-block" style={{ background: st.bg, color: st.color, transform: "rotate(3deg)" }}>
+            <div className="text-[10px] font-bold px-2.5 py-1 rounded-full inline-block" style={{ background: st.bg, color: st.color }}>
               {st.label.toUpperCase()}
             </div>
             <div className="text-[11px] mt-1" style={{ color: "#8A7A75" }}>Emitida: {today}</div>
