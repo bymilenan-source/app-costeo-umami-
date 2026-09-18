@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, Trash2, Clock, AlertCircle, X, Pencil } from "lucide-react";
 import { STATUS, uid } from "@/lib/constants";
 import { money } from "@/lib/costing";
@@ -11,8 +12,10 @@ import { useToast } from "@/lib/useToast";
 import { Card, Field, PrimaryButton, SectionTitle, Toast, inputStyle } from "@/components/ui";
 import type { Order, OrderStatus, Recipe } from "@/lib/types";
 
-export default function PedidosPage() {
+function PedidosPageInner() {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { profile } = useProfile();
   const { toast, notify } = useToast();
   const [loading, setLoading] = useState(true);
@@ -64,6 +67,19 @@ export default function PedidosPage() {
     });
     setShowForm(true);
   };
+
+  useEffect(() => {
+    const editId = searchParams.get("edit");
+    if (!editId || loading) return;
+    const target = orders.find((o) => o.id === editId);
+    if (target) {
+      (() => {
+        openEdit(target);
+        router.replace("/dashboard/pedidos");
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, loading, orders]);
 
   const save = async () => {
     if (!form.clientName || !form.productName || !form.deliveryDate) {
@@ -251,5 +267,13 @@ export default function PedidosPage() {
       </div>
       <Toast message={toast} />
     </div>
+  );
+}
+
+export default function PedidosPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-center py-10" style={{ color: "#B0A29C" }}>Cargando…</p>}>
+      <PedidosPageInner />
+    </Suspense>
   );
 }

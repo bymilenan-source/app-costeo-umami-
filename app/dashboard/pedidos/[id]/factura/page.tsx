@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Printer } from "lucide-react";
+import { Pencil, Printer } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { InvoiceCard } from "@/components/dashboard/InvoiceCard";
@@ -38,9 +38,18 @@ export default function FacturaPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between print:hidden">
         <button onClick={() => router.push("/dashboard/pedidos")} className="text-sm font-medium" style={{ color: "#1B2A4A" }}>← Volver</button>
-        <button onClick={() => window.print()} className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg" style={{ background: "#1B2A4A", color: "#fff" }}>
-          <Printer size={14} /> Descargar / Imprimir
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => router.push(`/dashboard/pedidos?edit=${order.id}`)}
+            className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border"
+            style={{ borderColor: "#1B2A4A", color: "#1B2A4A" }}
+          >
+            <Pencil size={14} /> Editar
+          </button>
+          <button onClick={() => window.print()} className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg" style={{ background: "#1B2A4A", color: "#fff" }}>
+            <Printer size={14} /> Descargar / Imprimir
+          </button>
+        </div>
       </div>
       <InvoiceCard profile={profile} order={order} />
     </div>
