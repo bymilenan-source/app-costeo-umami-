@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -24,6 +24,19 @@ export const metadata: Metadata = {
   title: "Costeo UMAMI — costos, precios y facturas",
   description:
     "Herramienta de costeo, recetas y facturación para pasteleras y pequeños emprendimientos de comida.",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Costeo UMAMI",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1B2A4A",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
