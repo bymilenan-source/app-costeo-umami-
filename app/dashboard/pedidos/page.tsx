@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, Trash2, Clock, AlertCircle, X } from "lucide-react";
+import { Plus, Trash2, Clock, AlertCircle, X, Pencil } from "lucide-react";
 import { STATUS, uid } from "@/lib/constants";
 import { money } from "@/lib/costing";
 import { createClient } from "@/lib/supabase/client";
@@ -19,6 +19,7 @@ export default function PedidosPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const blank = () => ({
     clientName: "", clientPhone: "", productName: "", recipeId: "",
@@ -40,15 +41,36 @@ export default function PedidosPage() {
     })();
   }, [supabase]);
 
+  const openNew = () => {
+    setEditingId(null);
+    setForm(blank());
+    setShowForm(true);
+  };
+
+  const openEdit = (o: Order) => {
+    setEditingId(o.id);
+    setForm({
+      clientName: o.client_name,
+      clientPhone: o.client_phone,
+      productName: o.product_name,
+      recipeId: o.recipe_id ?? "",
+      quantity: String(o.quantity),
+      unitPrice: String(o.unit_price),
+      deliveryDate: o.delivery_date ?? "",
+      notes: o.notes,
+      deposit: String(o.deposit),
+      invoiceMode: o.invoice_mode,
+      ncf: o.ncf,
+    });
+    setShowForm(true);
+  };
+
   const save = async () => {
     if (!form.clientName || !form.productName || !form.deliveryDate) {
       notify("Completa cliente, producto y fecha de entrega");
       return;
     }
-    const { data: userData } = await supabase.auth.getUser();
-    const row = {
-      id: uid(),
-      user_id: userData.user!.id,
+    const patch = {
       client_name: form.clientName,
       client_phone: form.clientPhone,
       product_name: form.productName,
@@ -58,10 +80,22 @@ export default function PedidosPage() {
       delivery_date: form.deliveryDate,
       notes: form.notes,
       deposit: parseFloat(form.deposit) || 0,
-      status: "pendiente" as OrderStatus,
       invoice_mode: form.invoiceMode,
       ncf: form.ncf,
     };
+
+    if (editingId) {
+      const { data, error } = await supabase.from("orders").update(patch).eq("id", editingId).select().single();
+      if (error) { notify("No se pudo actualizar el pedido"); return; }
+      setOrders(orders.map((o) => (o.id === editingId ? (data as Order) : o)));
+      setShowForm(false);
+      setEditingId(null);
+      notify("Pedido actualizado");
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    const row = { id: uid(), user_id: userData.user!.id, status: "pendiente" as OrderStatus, ...patch };
     const { data, error } = await supabase.from("orders").insert(row).select().single();
     if (error) { notify("No se pudo guardar el pedido"); return; }
     setOrders([data as Order, ...orders]);
@@ -73,6 +107,7 @@ export default function PedidosPage() {
   const remove = async (id: string) => {
     await supabase.from("orders").delete().eq("id", id);
     setOrders(orders.filter((o) => o.id !== id));
+    if (editingId === id) { setShowForm(false); setEditingId(null); }
   };
 
   const setStatus = async (id: string, status: OrderStatus) => {
@@ -86,8 +121,8 @@ export default function PedidosPage() {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <SectionTitle>Nuevo pedido</SectionTitle>
-          <button onClick={() => setShowForm(false)} style={{ color: "#8A7A75" }}><X size={18} /></button>
+          <SectionTitle>{editingId ? "Editar pedido" : "Nuevo pedido"}</SectionTitle>
+          <button onClick={() => { setShowForm(false); setEditingId(null); }} style={{ color: "#8A7A75" }}><X size={18} /></button>
         </div>
         <Card>
           <div className="space-y-3">
@@ -161,7 +196,7 @@ export default function PedidosPage() {
           )}
         </Card>
 
-        <PrimaryButton onClick={save} full>Guardar pedido</PrimaryButton>
+        <PrimaryButton onClick={save} full>{editingId ? "Guardar cambios" : "Guardar pedido"}</PrimaryButton>
         <Toast message={toast} />
       </div>
     );
@@ -170,7 +205,7 @@ export default function PedidosPage() {
   return (
     <div className="space-y-4">
       <SectionTitle sub="Registra pedidos y genera la factura para tu cliente en segundos.">Pedidos y Facturas</SectionTitle>
-      <PrimaryButton onClick={() => { setForm(blank()); setShowForm(true); }} full><Plus size={16} /> Nuevo pedido</PrimaryButton>
+      <PrimaryButton onClick={openNew} full><Plus size={16} /> Nuevo pedido</PrimaryButton>
 
       <div className="space-y-2">
         {orders.length === 0 && <p className="text-sm text-center py-6" style={{ color: "#B0A29C" }}>No tienes pedidos registrados.</p>}
@@ -180,14 +215,14 @@ export default function PedidosPage() {
           return (
             <Card key={o.id}>
               <div className="flex items-start justify-between">
-                <div>
+                <button className="text-left flex-1" onClick={() => openEdit(o)}>
                   <div className="font-semibold text-sm" style={{ color: "#101B33" }}>{o.client_name}</div>
                   <div className="text-xs mt-0.5" style={{ color: "#8A7A75" }}>{o.product_name} · x{o.quantity}</div>
                   <div className="text-xs flex items-center gap-1 mt-1" style={{ color: "#8A7A75" }}>
                     <Clock size={11} /> entrega {o.delivery_date || "—"}
                   </div>
-                </div>
-                <span className="text-[10px] font-semibold px-2 py-1 rounded-full" style={{ background: st.bg, color: st.color }}>{st.label}</span>
+                </button>
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0" style={{ background: st.bg, color: st.color }}>{st.label}</span>
               </div>
               {o.notes && (
                 <div className="flex items-start gap-1 mt-2 text-xs" style={{ color: "#A9822F" }}>
@@ -205,6 +240,7 @@ export default function PedidosPage() {
                   >
                     {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                   </select>
+                  <button onClick={() => openEdit(o)} style={{ color: "#1B2A4A" }}><Pencil size={15} /></button>
                   <Link href={`/dashboard/pedidos/${o.id}/factura`} className="text-xs font-semibold px-2.5 py-1.5 rounded-md" style={{ background: "#1B2A4A", color: "#fff" }}>Factura</Link>
                   <button onClick={() => remove(o.id)} style={{ color: "#B25C5C" }}><Trash2 size={14} /></button>
                 </div>
