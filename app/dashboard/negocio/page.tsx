@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { ImagePlus, X } from "lucide-react";
-import { TEMPLATES } from "@/lib/constants";
+import { COLORS, TEMPLATES } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useToast } from "@/lib/useToast";
@@ -162,15 +162,25 @@ export default function NegocioPage() {
 
       <Card>
         <span className="text-[11px] font-medium block mb-2" style={{ color: "#7A6B66" }}>Diseño de factura</span>
+        <p className="text-[11px] mb-2" style={{ color: "#8A7A75" }}>Se guarda al instante, no hace falta tocar &quot;Guardar cambios&quot;.</p>
         <div className="grid grid-cols-2 gap-2">
           {TEMPLATES.map((t) => (
             <button
               key={t.id}
-              onClick={() => setForm({ ...form, template: t.id })}
+              onClick={async () => {
+                setForm({ ...form, template: t.id });
+                const { error } = await updateProfile({ template: t.id });
+                notify(error ? "No se pudo cambiar el diseño" : `Diseño "${t.label}" aplicado`);
+              }}
               className="rounded-lg overflow-hidden border-2 text-left"
               style={{ borderColor: form.template === t.id ? "#1B2A4A" : "#E4D8C6" }}
             >
-              <div style={{ background: t.header, color: t.text }} className="px-2.5 py-2 text-[11px] font-semibold">{t.label}</div>
+              <div
+                style={{ background: t.header, color: t.text, borderBottom: `1px solid ${COLORS.line}` }}
+                className="px-2.5 py-2 text-[11px] font-semibold"
+              >
+                {t.label}
+              </div>
               <div style={{ background: t.body }} className="h-8" />
             </button>
           ))}
