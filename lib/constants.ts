@@ -24,7 +24,7 @@ export interface InvoiceTemplate {
 
 export const TEMPLATES: InvoiceTemplate[] = [
   { id: "recetario", label: "Recetario", header: COLORS.plum, text: "#FFFFFF", body: "#FFF9F0" },
-  { id: "moderno", label: "Moderno", header: "#FFFFFF", text: COLORS.plumDark, body: "#FFFFFF" },
+  { id: "moderno", label: "Moderno", header: COLORS.blush, text: COLORS.plumDark, body: "#FFFFFF" },
   { id: "elegante", label: "Elegante", header: COLORS.charcoal, text: COLORS.butter, body: "#F8F3EA" },
   { id: "rustico", label: "Rústico", header: "#8B6A4F", text: "#FFF6E9", body: "#F3E6D3" },
 ];
