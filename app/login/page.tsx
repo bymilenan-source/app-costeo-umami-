@@ -35,7 +35,7 @@ function LoginForm() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-5">
           <div style={{ fontFamily: "var(--font-fraunces)", color: COLORS.plumDark }} className="text-2xl font-semibold">
-            Costeo UMAMI
+            Kostia
           </div>
           <p className="text-xs mt-1" style={{ color: "#8A7A75" }}>Inicia sesión en tu cuenta</p>
         </div>

@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Costeo UMAMI",
-    short_name: "Costeo UMAMI",
+    name: "Kostia",
+    short_name: "Kostia",
     description: "Costeo, recetas y facturación para pasteleras y pequeños emprendimientos de comida.",
     start_url: "/dashboard",
     display: "standalone",

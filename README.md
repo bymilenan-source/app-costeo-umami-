@@ -1,4 +1,4 @@
-# Costeo UMAMI
+# Kostia
 
 App de costeo, recetas y facturación para pasteleras y pequeños emprendimientos
 de comida. Construida con **Next.js** + **Supabase** (Postgres + Auth), con

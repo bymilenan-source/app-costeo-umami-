@@ -21,7 +21,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Costeo UMAMI — costos, precios y facturas",
+  title: "Kostia — costos, precios y facturas",
   description:
     "Herramienta de costeo, recetas y facturación para pasteleras y pequeños emprendimientos de comida.",
   icons: {
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Costeo UMAMI",
+    title: "Kostia",
   },
 };
 

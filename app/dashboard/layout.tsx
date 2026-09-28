@@ -64,7 +64,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
               Tu suscripción venció
             </div>
             <p className="text-sm mt-2 max-w-sm mx-auto" style={{ color: "#8A7A75" }}>
-              Contacta a Chef Milena / UMAMI para renovar tu acceso y seguir usando la app.
+              Contacta a Chef Milena / Kostia para renovar tu acceso y seguir usando la app.
             </p>
           </div>
         ) : (

@@ -61,7 +61,7 @@ export default function LandingPage() {
       <header style={{ background: COLORS.plum }} className="px-5 pt-10 pb-14">
         <div className="max-w-3xl mx-auto text-center">
           <div style={{ fontFamily: "var(--font-fraunces)", color: "#fff" }} className="text-3xl md:text-4xl font-semibold tracking-tight">
-            Costeo UMAMI
+            Kostia
           </div>
           <p style={{ color: COLORS.blush }} className="text-sm md:text-base mt-3 max-w-xl mx-auto">
             La herramienta diaria para pasteleras y pequeños emprendimientos de comida:

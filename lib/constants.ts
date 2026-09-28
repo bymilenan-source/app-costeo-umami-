@@ -1,4 +1,4 @@
-// Paleta de marca UMAMI: navy marino, crema, marroncito, dorado.
+// Paleta de marca Kostia: navy marino, crema, marroncito, dorado.
 // Sin rojo ni tonos vino (excepto el rojo suave reservado para "pendiente").
 export const COLORS = {
   plum: "#1B2A4A",

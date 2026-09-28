@@ -1,5 +1,5 @@
 -- ============================================================================
--- Costeo UMAMI — esquema inicial (multiusuario, RLS por fila)
+-- Kostia — esquema inicial (multiusuario, RLS por fila)
 -- ============================================================================
 
 create extension if not exists "pgcrypto";
