@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Pencil, Printer, Share2 } from "lucide-react";
+import { Pencil, Printer, Eye, Share2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useToast } from "@/lib/useToast";
@@ -16,7 +16,9 @@ export default function FacturaPage() {
   const { profile } = useProfile();
   const supabase = useMemo(() => createClient(), []);
   const [order, setOrder] = useState<Order | null | undefined>(undefined);
+  const [generating, setGenerating] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [previewCanvas, setPreviewCanvas] = useState<HTMLCanvasElement | null>(null);
   const invoiceRef = useRef<HTMLDivElement>(null);
   const { toast, notify } = useToast();
 
@@ -27,13 +29,25 @@ export default function FacturaPage() {
     })();
   }, [supabase, params.id]);
 
-  const share = async () => {
-    if (!invoiceRef.current || !order) return;
-    setSharing(true);
+  const openPreview = async () => {
+    if (!invoiceRef.current) return;
+    setGenerating(true);
     try {
       const html2canvas = (await import("html2canvas")).default;
       const canvas = await html2canvas(invoiceRef.current, { useCORS: true, scale: 2, backgroundColor: "#ffffff" });
-      const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      setPreviewCanvas(canvas);
+    } catch {
+      notify("No se pudo generar la vista previa");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const shareCanvas = async () => {
+    if (!previewCanvas || !order) return;
+    setSharing(true);
+    try {
+      const blob: Blob | null = await new Promise((resolve) => previewCanvas.toBlob(resolve, "image/png"));
       if (!blob) {
         notify("No se pudo generar la imagen");
         return;
@@ -43,6 +57,7 @@ export default function FacturaPage() {
 
       if (navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title: "Factura", text: `Factura para ${order.client_name}` });
+        setPreviewCanvas(null);
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -51,6 +66,7 @@ export default function FacturaPage() {
         a.click();
         URL.revokeObjectURL(url);
         notify("Imagen descargada. Compártela desde tu galería.");
+        setPreviewCanvas(null);
       }
     } catch (err) {
       if ((err as Error)?.name !== "AbortError") {
@@ -86,12 +102,12 @@ export default function FacturaPage() {
             <Pencil size={14} /> Editar
           </button>
           <button
-            onClick={share}
-            disabled={sharing}
+            onClick={openPreview}
+            disabled={generating}
             className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border disabled:opacity-50"
             style={{ borderColor: "#1B2A4A", color: "#1B2A4A" }}
           >
-            <Share2 size={14} /> {sharing ? "Generando…" : "Compartir"}
+            <Eye size={14} /> {generating ? "Generando…" : "Vista previa"}
           </button>
           <button onClick={() => window.print()} className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg" style={{ background: "#1B2A4A", color: "#fff" }}>
             <Printer size={14} /> Imprimir
@@ -101,6 +117,30 @@ export default function FacturaPage() {
       <div ref={invoiceRef}>
         <InvoiceCard profile={profile} order={order} />
       </div>
+
+      {previewCanvas && (
+        <div className="fixed inset-0 z-50 flex flex-col print:hidden" style={{ background: "rgba(16,27,51,0.92)" }}>
+          <div className="flex items-center justify-between px-4 py-3 shrink-0">
+            <span className="text-sm font-semibold" style={{ color: "#fff" }}>Así le llegará al cliente</span>
+            <button onClick={() => setPreviewCanvas(null)} style={{ color: "#fff" }}><X size={22} /></button>
+          </div>
+          <div className="flex-1 overflow-auto px-4 pb-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={previewCanvas.toDataURL("image/png")} alt="Vista previa de la factura" className="w-full rounded-lg" />
+          </div>
+          <div className="p-4 shrink-0">
+            <button
+              onClick={shareCanvas}
+              disabled={sharing}
+              className="w-full flex items-center justify-center gap-1.5 text-sm font-semibold py-3 rounded-lg disabled:opacity-50"
+              style={{ background: "#1B2A4A", color: "#fff" }}
+            >
+              <Share2 size={16} /> {sharing ? "Compartiendo…" : "Compartir con el cliente"}
+            </button>
+          </div>
+        </div>
+      )}
+
       <Toast message={toast} />
     </div>
   );
