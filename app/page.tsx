@@ -38,7 +38,11 @@ export default function LandingPage() {
 
   const submit = async () => {
     if (!form.name || !form.contact) {
-      notify("Ponle tu nombre y un contacto (teléfono, Instagram o correo)");
+      notify("Ponle tu nombre y tu correo");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contact)) {
+      notify("Escribe un correo válido");
       return;
     }
     setSubmitting(true);
@@ -132,8 +136,8 @@ export default function LandingPage() {
                 <Field label="Tu nombre">
                   <input style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nombre y apellido" />
                 </Field>
-                <Field label="Teléfono, Instagram o correo">
-                  <input style={inputStyle} value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} placeholder="809-000-0000 / @tunegocio" />
+                <Field label="Correo">
+                  <input style={inputStyle} type="email" value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} placeholder="tucorreo@ejemplo.com" />
                 </Field>
                 <Field label="Cuéntanos sobre tu negocio (opcional)">
                   <textarea
