@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 import { COLORS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import { Card, Field, PrimaryButton, inputStyle } from "@/components/ui";
@@ -12,6 +13,7 @@ function LoginForm() {
   const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -52,14 +54,25 @@ function LoginForm() {
               />
             </Field>
             <Field label="Contraseña">
-              <input
-                style={inputStyle}
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <input
+                  style={{ ...inputStyle, paddingRight: 36 }}
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                  style={{ color: "#8A7A75" }}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </Field>
             {error && (
               <p className="text-xs" style={{ color: "#B25C5C" }}>{error}</p>

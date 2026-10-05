@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, X, Plus } from "lucide-react";
+import { Check, X, Plus, KeyRound } from "lucide-react";
 import { COLORS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/lib/useToast";
@@ -23,6 +23,9 @@ export default function AdminPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newUser, setNewUser] = useState({ businessName: "", email: "", password: "" });
+  const [resetId, setResetId] = useState<string | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   const load = async () => {
     const [{ data: u }, { data: r }] = await Promise.all([
@@ -67,6 +70,22 @@ export default function AdminPage() {
     setShowCreate(false);
     setNewUser({ businessName: "", email: "", password: "" });
     load();
+  };
+
+  const resetUserPassword = async (id: string) => {
+    if (!resetPassword || resetPassword.length < 6) { notify("Mínimo 6 caracteres"); return; }
+    setResetting(true);
+    const res = await fetch("/api/admin/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: id, password: resetPassword }),
+    });
+    const body = await res.json();
+    setResetting(false);
+    if (!res.ok) { notify(body.error || "No se pudo restablecer la contraseña"); return; }
+    notify("Contraseña actualizada");
+    setResetId(null);
+    setResetPassword("");
   };
 
   if (loading) return <p className="text-sm text-center py-10" style={{ color: "#B0A29C" }}>Cargando…</p>;
@@ -181,6 +200,45 @@ export default function AdminPage() {
                     <X size={13} /> Desactivar
                   </button>
                 </div>
+
+                {resetId === u.id ? (
+                  <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${COLORS.line}` }}>
+                    <Field label="Nueva contraseña (mín. 6 caracteres)">
+                      <input
+                        style={inputStyle}
+                        type="text"
+                        value={resetPassword}
+                        onChange={(e) => setResetPassword(e.target.value)}
+                        placeholder="Escribe la nueva contraseña"
+                      />
+                    </Field>
+                    <div className="flex items-center gap-2 mt-2">
+                      <button
+                        onClick={() => resetUserPassword(u.id)}
+                        disabled={resetting}
+                        className="flex-1 text-xs font-semibold py-2 rounded-lg disabled:opacity-50"
+                        style={{ background: COLORS.plum, color: "#fff" }}
+                      >
+                        {resetting ? "Guardando…" : "Guardar contraseña"}
+                      </button>
+                      <button
+                        onClick={() => { setResetId(null); setResetPassword(""); }}
+                        className="text-xs font-medium px-3 py-2"
+                        style={{ color: "#8A7A75" }}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setResetId(u.id); setResetPassword(""); }}
+                    className="flex items-center gap-1 text-xs font-medium mt-2"
+                    style={{ color: COLORS.plum }}
+                  >
+                    <KeyRound size={12} /> Restablecer contraseña
+                  </button>
+                )}
               </Card>
             );
           })}
