@@ -9,6 +9,13 @@ import { useToast } from "@/lib/useToast";
 import { Card, Field, PrimaryButton, Row, SectionTitle, Toast, inputStyle } from "@/components/ui";
 import type { Recipe, RecipeComponent, RecipeSupplyItem, Supply } from "@/lib/types";
 
+// Acepta "1,5" y "1.5": en teclados en español la coma es el decimal y
+// un <input type="text" inputMode="decimal"> la rechazaba dejando la cantidad vacía.
+const toNum = (v: string | number) => {
+  const n = parseFloat(String(v).trim().replace(",", "."));
+  return Number.isFinite(n) ? n : NaN;
+};
+
 interface DraftItem { key: string; supplyId: string; qty: string }
 interface DraftComponent { key: string; componentRecipeId: string; fraction: string }
 interface Draft {
@@ -99,11 +106,11 @@ export default function RecetasPage() {
     for (const it of draft.items) {
       const supply = supplies.find((s) => s.id === it.supplyId);
       if (!supply) continue;
-      const cost = Number(supply.unit_cost) * (parseFloat(it.qty) || 0);
+      const cost = Number(supply.unit_cost) * (toNum(it.qty) || 0);
       if (supply.kind === "insumo") insumoCost += cost; else ingredientCost += cost;
     }
     const subRecipeDetails = draft.components.map((c) => {
-      const fraction = parseFloat(c.fraction) || 0;
+      const fraction = toNum(c.fraction) || 0;
       let cost = 0;
       try {
         cost = computeRecipeCost(c.componentRecipeId, graph).totalCost * fraction;
@@ -113,13 +120,13 @@ export default function RecetasPage() {
       return { name: recipes.find((r) => r.id === c.componentRecipeId)?.name ?? "Sub-receta", fraction, cost };
     });
     const subRecipeCost = subRecipeDetails.reduce((s, d) => s + d.cost, 0);
-    const laborCost = (parseFloat(draft.laborHours) || 0) * (parseFloat(draft.laborRate) || 0);
+    const laborCost = (toNum(draft.laborHours) || 0) * (toNum(draft.laborRate) || 0);
     const subtotal = ingredientCost + insumoCost + subRecipeCost + laborCost;
-    const indirectCost = subtotal * ((parseFloat(draft.indirectPct) || 0) / 100);
+    const indirectCost = subtotal * ((toNum(draft.indirectPct) || 0) / 100);
     const totalCost = subtotal + indirectCost;
-    const portions = parseFloat(draft.portions) || 1;
+    const portions = toNum(draft.portions) || 1;
     const costPerPortion = totalCost / portions;
-    const suggestedTotal = totalCost * (1 + (parseFloat(draft.marginPct) || 0) / 100);
+    const suggestedTotal = totalCost * (1 + (toNum(draft.marginPct) || 0) / 100);
     const pricePerPortion = suggestedTotal / portions;
     return { ingredientCost, insumoCost, subRecipeCost, subRecipeDetails, laborCost, subtotal, indirectCost, totalCost, costPerPortion, suggestedTotal, pricePerPortion };
   }, [draft, supplies, graph, recipes]);
@@ -140,13 +147,13 @@ export default function RecetasPage() {
       return;
     }
     // Antes, las filas sin cantidad se descartaban en silencio al guardar.
-    const sinCantidad = draft.items.filter((it) => !(parseFloat(it.qty) > 0));
+    const sinCantidad = draft.items.filter((it) => !(toNum(it.qty) > 0));
     if (sinCantidad.length) {
       const nombres = sinCantidad.map((it) => supplies.find((s) => s.id === it.supplyId)?.name ?? "un elemento").join(", ");
       notify(`Falta la cantidad de: ${nombres}`);
       return;
     }
-    if (draft.components.some((c) => !(parseFloat(c.fraction) > 0))) {
+    if (draft.components.some((c) => !(toNum(c.fraction) > 0))) {
       notify("Falta la proporción de una sub-receta");
       return;
     }
@@ -157,30 +164,59 @@ export default function RecetasPage() {
       id: draft.id,
       user_id: userId,
       name: draft.name,
-      portions: parseFloat(draft.portions) || 1,
-      labor_hours: parseFloat(draft.laborHours) || 0,
-      labor_rate: parseFloat(draft.laborRate) || 0,
-      indirect_pct: parseFloat(draft.indirectPct) || 0,
-      margin_pct: parseFloat(draft.marginPct) || 0,
+      portions: toNum(draft.portions) || 1,
+      labor_hours: toNum(draft.laborHours) || 0,
+      labor_rate: toNum(draft.laborRate) || 0,
+      indirect_pct: toNum(draft.indirectPct) || 0,
+      margin_pct: toNum(draft.marginPct) || 0,
     };
 
     const { error: recipeError } = await supabase.from("recipes").upsert(recipeRow);
     if (recipeError) { notify("No se pudo guardar la receta"); return; }
 
-    await supabase.from("recipe_supply_items").delete().eq("recipe_id", draft.id);
-    await supabase.from("recipe_components").delete().eq("recipe_id", draft.id);
+    // Primero se insertan las filas nuevas y solo si eso funciona se borran
+    // las anteriores. Antes se borraba todo primero y, si la inserción
+    // fallaba, la receta quedaba vacía sin ningún aviso.
+    const newItems = draft.items
+      .filter((it) => it.supplyId && toNum(it.qty) > 0)
+      .map((it) => ({ id: uid(), recipe_id: draft.id, supply_id: it.supplyId, qty: toNum(it.qty) }));
+    const newComponents = draft.components
+      .filter((c) => c.componentRecipeId && toNum(c.fraction) > 0)
+      .map((c) => ({ id: uid(), recipe_id: draft.id, component_recipe_id: c.componentRecipeId, fraction: toNum(c.fraction) }));
 
-    const validItems = draft.items.filter((it) => it.supplyId && parseFloat(it.qty) > 0);
-    if (validItems.length) {
-      await supabase.from("recipe_supply_items").insert(
-        validItems.map((it) => ({ id: uid(), recipe_id: draft.id, supply_id: it.supplyId, qty: parseFloat(it.qty) }))
-      );
+    if (newItems.length) {
+      const { error } = await supabase.from("recipe_supply_items").insert(newItems);
+      if (error) {
+        console.error("recipe_supply_items insert", error);
+        notify(`No se guardaron los ingredientes: ${error.message}`);
+        return;
+      }
     }
-    const validComponents = draft.components.filter((c) => c.componentRecipeId && parseFloat(c.fraction) > 0);
-    if (validComponents.length) {
-      await supabase.from("recipe_components").insert(
-        validComponents.map((c) => ({ id: uid(), recipe_id: draft.id, component_recipe_id: c.componentRecipeId, fraction: parseFloat(c.fraction) }))
-      );
+    if (newComponents.length) {
+      const { error } = await supabase.from("recipe_components").insert(newComponents);
+      if (error) {
+        console.error("recipe_components insert", error);
+        if (newItems.length) {
+          await supabase.from("recipe_supply_items").delete().in("id", newItems.map((r) => r.id));
+        }
+        notify(`No se guardaron las sub-recetas: ${error.message}`);
+        return;
+      }
+    }
+
+    const keepItemIds = newItems.map((r) => r.id);
+    const keepCompIds = newComponents.map((r) => r.id);
+    let delItems = supabase.from("recipe_supply_items").delete().eq("recipe_id", draft.id);
+    if (keepItemIds.length) delItems = delItems.not("id", "in", `(${keepItemIds.join(",")})`);
+    let delComps = supabase.from("recipe_components").delete().eq("recipe_id", draft.id);
+    if (keepCompIds.length) delComps = delComps.not("id", "in", `(${keepCompIds.join(",")})`);
+    const [{ error: e1 }, { error: e2 }] = await Promise.all([delItems, delComps]);
+    if (e1 || e2) {
+      console.error("cleanup", e1, e2);
+      notify("Receta guardada, pero quedaron líneas viejas. Ábrela y revísala.");
+      setDraft(null);
+      load();
+      return;
     }
 
     notify("Receta guardada");
@@ -211,7 +247,7 @@ export default function RecetasPage() {
               <input style={inputStyle} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Ej. Vasito de bizcocho" />
             </Field>
             <Field label="Cantidad de porciones que rinde">
-              <input style={inputStyle} type="number" value={draft.portions} onChange={(e) => setDraft({ ...draft, portions: e.target.value })} />
+              <input style={inputStyle} type="text" inputMode="decimal" value={draft.portions} onChange={(e) => setDraft({ ...draft, portions: e.target.value })} />
             </Field>
           </div>
         </Card>
@@ -252,7 +288,7 @@ export default function RecetasPage() {
               <div className="space-y-2">
                 {rows.map((it) => {
                   const supply = supplies.find((s) => s.id === it.supplyId);
-                  const qty = parseFloat(it.qty) || 0;
+                  const qty = toNum(it.qty) || 0;
                   const lineCost = supply ? Number(supply.unit_cost) * qty : 0;
                   return (
                     <div key={it.key}>
@@ -269,7 +305,7 @@ export default function RecetasPage() {
                       </select>
                       <input
                         style={{ ...inputStyle, flex: 1 }}
-                        type="number"
+                        type="text" inputMode="decimal"
                         placeholder={supply ? supply.unit : "cant"}
                         value={it.qty}
                         onChange={(e) => setDraft({ ...draft, items: draft.items.map((x) => x.key === it.key ? { ...x, qty: e.target.value } : x) })}
@@ -330,7 +366,7 @@ export default function RecetasPage() {
                 </select>
                 <input
                   style={{ ...inputStyle, flex: 1 }}
-                  type="number" step="0.05"
+                  type="text" inputMode="decimal"
                   placeholder="0.25"
                   value={c.fraction}
                   onChange={(e) => setDraft({ ...draft, components: draft.components.map((x) => x.key === c.key ? { ...x, fraction: e.target.value } : x) })}
@@ -345,16 +381,16 @@ export default function RecetasPage() {
         <Card>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Horas de mano de obra">
-              <input style={inputStyle} type="number" value={draft.laborHours} onChange={(e) => setDraft({ ...draft, laborHours: e.target.value })} placeholder="2" />
+              <input style={inputStyle} type="text" inputMode="decimal" value={draft.laborHours} onChange={(e) => setDraft({ ...draft, laborHours: e.target.value })} placeholder="2" />
             </Field>
             <Field label="Tarifa por hora (RD$)">
-              <input style={inputStyle} type="number" value={draft.laborRate} onChange={(e) => setDraft({ ...draft, laborRate: e.target.value })} placeholder="150" />
+              <input style={inputStyle} type="text" inputMode="decimal" value={draft.laborRate} onChange={(e) => setDraft({ ...draft, laborRate: e.target.value })} placeholder="150" />
             </Field>
             <Field label="Costos indirectos (%)">
-              <input style={inputStyle} type="number" value={draft.indirectPct} onChange={(e) => setDraft({ ...draft, indirectPct: e.target.value })} />
+              <input style={inputStyle} type="text" inputMode="decimal" value={draft.indirectPct} onChange={(e) => setDraft({ ...draft, indirectPct: e.target.value })} />
             </Field>
             <Field label="Margen de ganancia (%)">
-              <input style={inputStyle} type="number" value={draft.marginPct} onChange={(e) => setDraft({ ...draft, marginPct: e.target.value })} />
+              <input style={inputStyle} type="text" inputMode="decimal" value={draft.marginPct} onChange={(e) => setDraft({ ...draft, marginPct: e.target.value })} />
             </Field>
           </div>
         </Card>
