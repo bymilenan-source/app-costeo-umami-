@@ -139,6 +139,17 @@ export default function RecetasPage() {
       notify("Ponle nombre y al menos un ingrediente o sub-receta");
       return;
     }
+    // Antes, las filas sin cantidad se descartaban en silencio al guardar.
+    const sinCantidad = draft.items.filter((it) => !(parseFloat(it.qty) > 0));
+    if (sinCantidad.length) {
+      const nombres = sinCantidad.map((it) => supplies.find((s) => s.id === it.supplyId)?.name ?? "un elemento").join(", ");
+      notify(`Falta la cantidad de: ${nombres}`);
+      return;
+    }
+    if (draft.components.some((c) => !(parseFloat(c.fraction) > 0))) {
+      notify("Falta la proporción de una sub-receta");
+      return;
+    }
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData.user!.id;
 
@@ -241,8 +252,11 @@ export default function RecetasPage() {
               <div className="space-y-2">
                 {rows.map((it) => {
                   const supply = supplies.find((s) => s.id === it.supplyId);
+                  const qty = parseFloat(it.qty) || 0;
+                  const lineCost = supply ? Number(supply.unit_cost) * qty : 0;
                   return (
-                    <div key={it.key} className="flex items-center gap-2">
+                    <div key={it.key}>
+                    <div className="flex items-center gap-2">
                       <select
                         style={{ ...inputStyle, flex: 2 }}
                         value={it.supplyId}
@@ -261,6 +275,14 @@ export default function RecetasPage() {
                         onChange={(e) => setDraft({ ...draft, items: draft.items.map((x) => x.key === it.key ? { ...x, qty: e.target.value } : x) })}
                       />
                       <button onClick={() => setDraft({ ...draft, items: draft.items.filter((x) => x.key !== it.key) })} style={{ color: "#B25C5C" }}><Trash2 size={15} /></button>
+                    </div>
+                    {supply && (
+                      <div className="text-[11px] mt-1 pl-1" style={{ fontFamily: "var(--font-plex-mono)", color: qty > 0 ? "#8A7A75" : "#B25C5C" }}>
+                        {qty > 0
+                          ? `${qty} ${supply.unit} × ${money(supply.unit_cost)}/${supply.unit} = ${money(lineCost)}`
+                          : `Escribe la cantidad en ${supply.unit}`}
+                      </div>
+                    )}
                     </div>
                   );
                 })}
