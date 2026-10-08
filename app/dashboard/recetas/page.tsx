@@ -40,6 +40,9 @@ export default function RecetasPage() {
   const [components, setComponents] = useState<RecipeComponent[]>([]);
   const [supplies, setSupplies] = useState<Supply[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
+  // Error de guardado visible hasta que se corrija (el toast dura 2 s y se perdía).
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const load = async () => {
     const [{ data: r }, { data: si }, { data: c }, { data: s }] = await Promise.all([
@@ -141,6 +144,20 @@ export default function RecetasPage() {
     });
 
   const save = async () => {
+    if (!draft || saving) return;
+    setSaveError(null);
+    setSaving(true);
+    try {
+      await saveInner();
+    } catch (e) {
+      console.error("save", e);
+      setSaveError(`Error inesperado al guardar: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveInner = async () => {
     if (!draft) return;
     if (!draft.name || (draft.items.length === 0 && draft.components.length === 0)) {
       notify("Ponle nombre y al menos un ingrediente o sub-receta");
@@ -188,7 +205,7 @@ export default function RecetasPage() {
       const { error } = await supabase.from("recipe_supply_items").insert(newItems);
       if (error) {
         console.error("recipe_supply_items insert", error);
-        notify(`No se guardaron los ingredientes: ${error.message}`);
+        setSaveError(`No se guardaron los ingredientes: ${error.message}${error.code ? ` (código ${error.code})` : ""}`);
         return;
       }
     }
@@ -199,7 +216,7 @@ export default function RecetasPage() {
         if (newItems.length) {
           await supabase.from("recipe_supply_items").delete().in("id", newItems.map((r) => r.id));
         }
-        notify(`No se guardaron las sub-recetas: ${error.message}`);
+        setSaveError(`No se guardaron las sub-recetas: ${error.message}${error.code ? ` (código ${error.code})` : ""}`);
         return;
       }
     }
@@ -219,7 +236,22 @@ export default function RecetasPage() {
       return;
     }
 
-    notify("Receta guardada");
+    // Verificación: releer de la base de datos lo que quedó guardado.
+    const { data: saved, error: readError } = await supabase
+      .from("recipe_supply_items").select("id").eq("recipe_id", draft.id);
+    const savedCount = saved?.length ?? 0;
+    if (readError || savedCount !== newItems.length) {
+      console.error("verify", readError, savedCount, newItems.length);
+      setSaveError(
+        `La receta se guardó, pero al revisarla hay ${savedCount} de ${newItems.length} ingredientes/insumos.` +
+          (readError ? ` Error: ${readError.message}` : "") +
+          " Toma captura de este mensaje."
+      );
+      load();
+      return;
+    }
+
+    notify(`Receta guardada con ${savedCount} ingredientes/insumos`);
     setDraft(null);
     load();
   };
@@ -413,7 +445,16 @@ export default function RecetasPage() {
           </div>
         </Card>
 
-        <PrimaryButton onClick={save} full>Guardar receta</PrimaryButton>
+        {saveError && (
+          <Card style={{ background: "#F6E3E3", borderColor: "#B25C5C" }}>
+            <p className="text-sm font-semibold" style={{ color: "#8A3A3A" }}>No se pudo guardar completo</p>
+            <p className="text-xs mt-1" style={{ color: "#8A3A3A" }}>{saveError}</p>
+          </Card>
+        )}
+        <PrimaryButton onClick={save} full>{saving ? "Guardando…" : "Guardar receta"}</PrimaryButton>
+        <p className="text-[10px] text-center" style={{ color: "#B0A29C" }}>
+          versión {(process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7)}
+        </p>
         <Toast message={toast} />
       </div>
     );
