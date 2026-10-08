@@ -205,47 +205,74 @@ export default function RecetasPage() {
           </div>
         </Card>
 
-        <Card>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold" style={{ color: "#101B33" }}>Ingredientes e insumos usados</span>
-            <button
-              onClick={() => {
-                if (supplies.length === 0) { notify("Agrega ingredientes o insumos primero"); return; }
-                setDraft({ ...draft, items: [...draft.items, { key: uid(), supplyId: supplies[0].id, qty: "" }] });
-              }}
-              className="text-xs font-medium flex items-center gap-1" style={{ color: "#1B2A4A" }}
-            >
-              <Plus size={13} /> agregar
-            </button>
-          </div>
-          <div className="space-y-2">
-            {draft.items.map((it) => {
-              const supply = supplies.find((s) => s.id === it.supplyId);
-              return (
-                <div key={it.key} className="flex items-center gap-2">
-                  <select
-                    style={{ ...inputStyle, flex: 2 }}
-                    value={it.supplyId}
-                    onChange={(e) => setDraft({ ...draft, items: draft.items.map((x) => x.key === it.key ? { ...x, supplyId: e.target.value } : x) })}
-                  >
-                    {supplies.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name} {s.kind === "insumo" ? "(insumo)" : ""}</option>
-                    ))}
-                  </select>
-                  <input
-                    style={{ ...inputStyle, flex: 1 }}
-                    type="number"
-                    placeholder={supply ? supply.unit : "cant"}
-                    value={it.qty}
-                    onChange={(e) => setDraft({ ...draft, items: draft.items.map((x) => x.key === it.key ? { ...x, qty: e.target.value } : x) })}
-                  />
-                  <button onClick={() => setDraft({ ...draft, items: draft.items.filter((x) => x.key !== it.key) })} style={{ color: "#B25C5C" }}><Trash2 size={15} /></button>
-                </div>
-              );
-            })}
-            {draft.items.length === 0 && <p className="text-xs" style={{ color: "#B0A29C" }}>Sin ingredientes ni insumos aún.</p>}
-          </div>
-        </Card>
+        {(["ingrediente", "insumo"] as const).map((kind) => {
+          const isInsumo = kind === "insumo";
+          const options = supplies.filter((s) => s.kind === kind);
+          // Una fila pertenece a la lista de su tipo; si el insumo/ingrediente
+          // ya no existe, se muestra en la lista de ingredientes para poder borrarla.
+          const rows = draft.items.filter((it) => {
+            const s = supplies.find((x) => x.id === it.supplyId);
+            return s ? s.kind === kind : !isInsumo;
+          });
+          return (
+            <Card key={kind}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold" style={{ color: "#101B33" }}>
+                  {isInsumo ? "Insumos y empaque (desechables)" : "Ingredientes"}
+                </span>
+                <button
+                  onClick={() => {
+                    if (options.length === 0) {
+                      notify(isInsumo ? "Primero agrega tus insumos en la pestaña Insumos" : "Primero agrega tus ingredientes en la pestaña Ingredientes");
+                      return;
+                    }
+                    setDraft({ ...draft, items: [...draft.items, { key: uid(), supplyId: options[0].id, qty: "" }] });
+                  }}
+                  className="text-xs font-medium flex items-center gap-1" style={{ color: "#1B2A4A" }}
+                >
+                  <Plus size={13} /> agregar
+                </button>
+              </div>
+              {isInsumo && (
+                <p className="text-[11px] mb-2" style={{ color: "#8A7A75" }}>
+                  Cajas, fundas, cucharitas, servilletas, etiquetas. Pon cuántas unidades usa esta receta.
+                </p>
+              )}
+              <div className="space-y-2">
+                {rows.map((it) => {
+                  const supply = supplies.find((s) => s.id === it.supplyId);
+                  return (
+                    <div key={it.key} className="flex items-center gap-2">
+                      <select
+                        style={{ ...inputStyle, flex: 2 }}
+                        value={it.supplyId}
+                        onChange={(e) => setDraft({ ...draft, items: draft.items.map((x) => x.key === it.key ? { ...x, supplyId: e.target.value } : x) })}
+                      >
+                        {!supply && <option value={it.supplyId}>(eliminado)</option>}
+                        {options.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        style={{ ...inputStyle, flex: 1 }}
+                        type="number"
+                        placeholder={supply ? supply.unit : "cant"}
+                        value={it.qty}
+                        onChange={(e) => setDraft({ ...draft, items: draft.items.map((x) => x.key === it.key ? { ...x, qty: e.target.value } : x) })}
+                      />
+                      <button onClick={() => setDraft({ ...draft, items: draft.items.filter((x) => x.key !== it.key) })} style={{ color: "#B25C5C" }}><Trash2 size={15} /></button>
+                    </div>
+                  );
+                })}
+                {rows.length === 0 && (
+                  <p className="text-xs" style={{ color: "#B0A29C" }}>
+                    {isInsumo ? "Sin insumos aún." : "Sin ingredientes aún."}
+                  </p>
+                )}
+              </div>
+            </Card>
+          );
+        })}
 
         <Card>
           <div className="flex items-center justify-between mb-2">

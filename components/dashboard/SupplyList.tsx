@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, Pencil, X } from "lucide-react";
+import { Plus, Trash2, Pencil, X, ArrowRightLeft } from "lucide-react";
 import { UNITS, uid } from "@/lib/constants";
 import { money } from "@/lib/costing";
 import { createClient } from "@/lib/supabase/client";
@@ -34,7 +34,7 @@ export function SupplyList({ kind }: { kind: SupplyKind }) {
   const { toast, notify } = useToast();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<Supply[]>([]);
-  const [form, setForm] = useState(blankForm("g"));
+  const [form, setForm] = useState(blankForm(kind === "insumo" ? "unidad" : "g"));
   const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -97,6 +97,21 @@ export function SupplyList({ kind }: { kind: SupplyKind }) {
     setItems([data as Supply, ...items]);
     setForm(blankForm(form.unit));
     notify(kind === "ingrediente" ? "Ingrediente guardado" : "Insumo guardado");
+  };
+
+  // Mueve un elemento guardado en la pestaña equivocada (ej. una caja
+  // guardada como ingrediente) al otro tipo. Las recetas que lo usan
+  // pasan a contarlo en la línea correcta automáticamente.
+  const otherKind: SupplyKind = kind === "ingrediente" ? "insumo" : "ingrediente";
+  const moveToOtherKind = async (id: string) => {
+    const name = items.find((i) => i.id === id)?.name ?? "";
+    const destino = otherKind === "insumo" ? "Insumos y empaque" : "Ingredientes";
+    if (!window.confirm(`¿Mover "${name}" a ${destino}?`)) return;
+    const { error } = await supabase.from("supplies").update({ kind: otherKind }).eq("id", id);
+    if (error) { notify("No se pudo mover, intenta de nuevo"); return; }
+    setItems(items.filter((i) => i.id !== id));
+    if (editingId === id) cancelEdit();
+    notify(`Movido a ${destino}`);
   };
 
   const remove = async (id: string) => {
@@ -176,6 +191,14 @@ export function SupplyList({ kind }: { kind: SupplyKind }) {
                 </div>
               </button>
               <div className="flex items-center gap-3 shrink-0 ml-2">
+                <button
+                  onClick={() => moveToOtherKind(i.id)}
+                  title={otherKind === "insumo" ? "Mover a Insumos" : "Mover a Ingredientes"}
+                  aria-label={otherKind === "insumo" ? "Mover a Insumos" : "Mover a Ingredientes"}
+                  style={{ color: "#8A7A75" }}
+                >
+                  <ArrowRightLeft size={15} />
+                </button>
                 <button onClick={() => startEdit(i)} style={{ color: "#1B2A4A" }}><Pencil size={15} /></button>
                 <button onClick={() => remove(i.id)} style={{ color: "#B25C5C" }}><Trash2 size={16} /></button>
               </div>
