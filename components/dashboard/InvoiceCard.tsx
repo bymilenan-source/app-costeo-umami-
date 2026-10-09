@@ -16,7 +16,7 @@ export interface InvoiceOrderData {
   ncf: string;
 }
 
-export function InvoiceCard({ profile, order }: { profile: Profile; order: InvoiceOrderData }) {
+export function InvoiceCard({ profile, order, photoUrl }: { profile: Profile; order: InvoiceOrderData; photoUrl?: string | null }) {
   const t = TEMPLATES.find((x) => x.id === profile.template) || TEMPLATES[0];
   const total = (Number(order.unit_price) || 0) * (Number(order.quantity) || 0);
   const deposit = Number(order.deposit) || 0;
@@ -44,7 +44,7 @@ export function InvoiceCard({ profile, order }: { profile: Profile; order: Invoi
             {isFiscal && profile.rnc && <div className="text-[11px] opacity-90 mt-1">RNC: {profile.rnc}</div>}
           </div>
         </div>
-        <div className="text-right text-[11px] opacity-90 leading-relaxed shrink-0">
+        <div className="text-right text-[11px] opacity-90 leading-relaxed min-w-0" style={{ maxWidth: "45%", overflowWrap: "anywhere" }}>
           {profile.phone && <div>{profile.phone}</div>}
           {profile.instagram && <div>{profile.instagram}</div>}
           {profile.address && <div>{profile.address}</div>}
@@ -87,6 +87,13 @@ export function InvoiceCard({ profile, order }: { profile: Profile; order: Invoi
             <span style={{ fontFamily: "var(--font-plex-mono)" }}>{money(total)}</span>
           </div>
         </div>
+
+        {photoUrl && (
+          <div className="mt-3 rounded-lg overflow-hidden" style={{ border: "1px solid #E4D8C6" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photoUrl} alt={order.product_name} crossOrigin="anonymous" className="w-full object-cover" style={{ maxHeight: 320 }} />
+          </div>
+        )}
 
         {order.notes && (
           <div className="text-xs mt-3 p-2.5 rounded-lg" style={{ background: "#EFE3D2", color: "#101B33" }}>
