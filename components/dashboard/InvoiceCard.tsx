@@ -105,8 +105,8 @@ export function InvoiceCard({ profile, order, photoUrl }: { profile: Profile; or
           </div>
           <div className="flex flex-col items-end gap-1">
             <div
-              className="text-[10px] font-bold px-2.5 rounded-full text-center"
-              style={{ background: st.bg, color: st.color, lineHeight: "20px" }}
+              className="text-[10px] font-bold px-2.5 rounded-full"
+              style={{ background: st.bg, color: st.color, height: 22, display: "flex", alignItems: "center", justifyContent: "center", paddingBottom: 3 }}
             >
               {st.label.toUpperCase()}
             </div>
