@@ -5,12 +5,13 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, Trash2, Clock, AlertCircle, X, Pencil } from "lucide-react";
 import { STATUS, uid } from "@/lib/constants";
-import { money } from "@/lib/costing";
+import { buildRecipeGraph, computeRecipeCost, money, type RecipeGraph } from "@/lib/costing";
+import { deriveClients, matchClients } from "@/lib/clients";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useToast } from "@/lib/useToast";
 import { Card, Field, PrimaryButton, SectionTitle, Toast, inputStyle } from "@/components/ui";
-import type { Order, OrderStatus, Recipe } from "@/lib/types";
+import type { Order, OrderStatus, Recipe, RecipeComponent, RecipeSupplyItem, Supply } from "@/lib/types";
 
 function PedidosPageInner() {
   const supabase = useMemo(() => createClient(), []);
@@ -21,6 +22,8 @@ function PedidosPageInner() {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [graph, setGraph] = useState<RecipeGraph | null>(null);
+  const [nameFocused, setNameFocused] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -34,12 +37,21 @@ function PedidosPageInner() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [{ data: o }, { data: r }] = await Promise.all([
+      const [{ data: o }, { data: r }, { data: si }, { data: c }, { data: s }] = await Promise.all([
         supabase.from("orders").select("*").order("created_at", { ascending: false }),
         supabase.from("recipes").select("*").order("name"),
+        supabase.from("recipe_supply_items").select("*"),
+        supabase.from("recipe_components").select("*"),
+        supabase.from("supplies").select("*"),
       ]);
       setOrders((o as Order[]) ?? []);
       setRecipes((r as Recipe[]) ?? []);
+      setGraph(buildRecipeGraph(
+        (r as Recipe[]) ?? [],
+        (si as RecipeSupplyItem[]) ?? [],
+        (c as RecipeComponent[]) ?? [],
+        (s as Supply[]) ?? []
+      ));
       setLoading(false);
     })();
   }, [supabase]);
@@ -80,6 +92,48 @@ function PedidosPageInner() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, loading, orders]);
+
+  // Llegada desde la sección Clientes: ?nuevo=1&cliente=…&tel=…[&repetir=<id pedido>]
+  useEffect(() => {
+    if (loading || searchParams.get("nuevo") !== "1") return;
+    const base = blank();
+    const prev = orders.find((o) => o.id === searchParams.get("repetir"));
+    setEditingId(null);
+    setForm({
+      ...base,
+      clientName: searchParams.get("cliente") ?? "",
+      clientPhone: searchParams.get("tel") ?? "",
+      ...(prev
+        ? {
+            productName: prev.product_name,
+            recipeId: prev.recipe_id ?? "",
+            quantity: String(prev.quantity),
+            unitPrice: String(prev.unit_price),
+            notes: prev.notes,
+            invoiceMode: prev.invoice_mode,
+          }
+        : {}),
+    });
+    setShowForm(true);
+    router.replace("/dashboard/pedidos");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, loading, orders]);
+
+  const clients = useMemo(() => deriveClients(orders), [orders]);
+  const nameSuggestions = nameFocused && !editingId
+    ? matchClients(clients, form.clientName).filter((c) => c.name !== form.clientName)
+    : [];
+
+  const recipePrice = (() => {
+    if (!form.recipeId || !graph) return null;
+    try {
+      const c = computeRecipeCost(form.recipeId, graph);
+      const portions = Number(graph.recipes[form.recipeId]?.portions) || 1;
+      return { whole: c.suggestedTotal, perPortion: c.pricePerPortion, portions };
+    } catch {
+      return null;
+    }
+  })();
 
   const save = async () => {
     if (!form.clientName || !form.productName || !form.deliveryDate) {
@@ -143,7 +197,32 @@ function PedidosPageInner() {
         <Card>
           <div className="space-y-3">
             <Field label="Nombre del cliente">
-              <input style={inputStyle} value={form.clientName} onChange={(e) => setForm({ ...form, clientName: e.target.value })} />
+              <input
+                style={inputStyle}
+                value={form.clientName}
+                onChange={(e) => setForm({ ...form, clientName: e.target.value })}
+                onFocus={() => setNameFocused(true)}
+                onBlur={() => setTimeout(() => setNameFocused(false), 150)}
+                placeholder="Escribe y elige si ya es cliente"
+                autoComplete="off"
+              />
+              {nameSuggestions.length > 0 && (
+                <div className="mt-1 rounded-lg border overflow-hidden" style={{ borderColor: "#E4D8C6", background: "#fff" }}>
+                  {nameSuggestions.map((c) => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => { setForm({ ...form, clientName: c.name, clientPhone: c.phone || form.clientPhone }); setNameFocused(false); }}
+                      className="w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2"
+                      style={{ borderBottom: "1px solid #F1E9DC", color: "#101B33" }}
+                    >
+                      <span className="truncate">{c.name}</span>
+                      <span className="text-xs shrink-0" style={{ color: "#8A7A75" }}>{c.phone || `${c.orderCount} pedidos`}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </Field>
             <Field label="Teléfono del cliente">
               <input style={inputStyle} value={form.clientPhone} onChange={(e) => setForm({ ...form, clientPhone: e.target.value })} placeholder="809-000-0000" />
@@ -154,7 +233,11 @@ function PedidosPageInner() {
                 value={form.recipeId}
                 onChange={(e) => {
                   const recipe = recipes.find((r) => r.id === e.target.value);
-                  setForm({ ...form, recipeId: e.target.value, productName: recipe ? recipe.name : form.productName });
+                  let unitPrice = form.unitPrice;
+                  if (recipe && graph && !form.unitPrice) {
+                    try { unitPrice = String(Math.round(computeRecipeCost(recipe.id, graph).suggestedTotal)); } catch { /* sin precio */ }
+                  }
+                  setForm({ ...form, recipeId: e.target.value, productName: recipe ? recipe.name : form.productName, unitPrice });
                 }}
               >
                 <option value="">Elegir de tus recetas</option>
@@ -166,6 +249,28 @@ function PedidosPageInner() {
                 value={form.productName}
                 onChange={(e) => setForm({ ...form, productName: e.target.value, recipeId: "" })}
               />
+              {recipePrice && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, unitPrice: String(Math.round(recipePrice.whole)) })}
+                    className="text-[11px] font-semibold px-2.5 py-1.5 rounded-md border"
+                    style={{ borderColor: "#E4D8C6", color: "#1B2A4A", background: "#FFF9F0" }}
+                  >
+                    Receta completa: {money(Math.round(recipePrice.whole))}
+                  </button>
+                  {recipePrice.portions > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, unitPrice: String(Math.round(recipePrice.perPortion)) })}
+                      className="text-[11px] font-semibold px-2.5 py-1.5 rounded-md border"
+                      style={{ borderColor: "#E4D8C6", color: "#1B2A4A", background: "#FFF9F0" }}
+                    >
+                      Por porción: {money(Math.round(recipePrice.perPortion))}
+                    </button>
+                  )}
+                </div>
+              )}
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Cantidad">
