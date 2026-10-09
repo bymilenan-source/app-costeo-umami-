@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { STATUS, TEMPLATES } from "@/lib/constants";
 import { money } from "@/lib/costing";
 import type { Profile, InvoiceMode, OrderStatus } from "@/lib/types";
@@ -16,6 +19,40 @@ export interface InvoiceOrderData {
   ncf: string;
 }
 
+// La imagen que se comparte se genera con html2canvas, que no respeta
+// `object-fit: cover`: estiraba el logo dentro del círculo y mostraba las
+// partes que el recorte ocultaba (p. ej. bordes negros). Recortamos el logo a
+// un cuadrado centrado en un canvas para que se vea igual en la app y en la
+// imagen que recibe el cliente.
+function useSquareImage(url: string | undefined | null, size = 192) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (!url) { setSrc(null); return; }
+    let cancelled = false;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      if (cancelled) return;
+      try {
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        const sx = (img.naturalWidth - side) / 2;
+        const sy = (img.naturalHeight - side) / 2;
+        const c = document.createElement("canvas");
+        c.width = size;
+        c.height = size;
+        c.getContext("2d")!.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+        setSrc(c.toDataURL("image/png"));
+      } catch {
+        setSrc(url);
+      }
+    };
+    img.onerror = () => { if (!cancelled) setSrc(url); };
+    img.src = url;
+    return () => { cancelled = true; };
+  }, [url, size]);
+  return src;
+}
+
 export function InvoiceCard({ profile, order, photoUrl }: { profile: Profile; order: InvoiceOrderData; photoUrl?: string | null }) {
   const t = TEMPLATES.find((x) => x.id === profile.template) || TEMPLATES[0];
   const total = (Number(order.unit_price) || 0) * (Number(order.quantity) || 0);
@@ -24,6 +61,7 @@ export function InvoiceCard({ profile, order, photoUrl }: { profile: Profile; or
   const st = STATUS[order.status];
   const today = new Date().toLocaleDateString("es-DO", { year: "numeric", month: "long", day: "numeric" });
   const isFiscal = order.invoice_mode === "fiscal";
+  const logoSrc = useSquareImage(profile.logo_url);
 
   return (
     <div style={{ background: t.body, border: "1px solid #E4D8C6", borderRadius: 16, overflow: "hidden" }} className="shadow-sm">
@@ -35,7 +73,7 @@ export function InvoiceCard({ profile, order, photoUrl }: { profile: Profile; or
               style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(255,255,255,0.15)" }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={profile.logo_url} alt={profile.business_name} className="w-full h-full object-cover" />
+              {logoSrc && <img src={logoSrc} alt={profile.business_name} width={48} height={48} style={{ width: 48, height: 48, display: "block" }} />}
             </div>
           )}
           <div>
@@ -67,8 +105,8 @@ export function InvoiceCard({ profile, order, photoUrl }: { profile: Profile; or
           </div>
           <div className="flex flex-col items-end gap-1">
             <div
-              className="text-[10px] font-bold px-2.5 py-1 rounded-full text-center leading-none"
-              style={{ background: st.bg, color: st.color }}
+              className="text-[10px] font-bold px-2.5 rounded-full text-center"
+              style={{ background: st.bg, color: st.color, lineHeight: "20px" }}
             >
               {st.label.toUpperCase()}
             </div>
@@ -91,7 +129,7 @@ export function InvoiceCard({ profile, order, photoUrl }: { profile: Profile; or
         {photoUrl && (
           <div className="mt-3 rounded-lg overflow-hidden" style={{ border: "1px solid #E4D8C6" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={photoUrl} alt={order.product_name} crossOrigin="anonymous" className="w-full object-cover" style={{ maxHeight: 320 }} />
+            <img src={photoUrl} alt={order.product_name} crossOrigin="anonymous" className="w-full h-auto block" />
           </div>
         )}
 
