@@ -79,6 +79,7 @@ export interface Order {
   status: OrderStatus;
   invoice_mode: InvoiceMode;
   ncf: string;
+  last_notified_on: string | null;
   created_at: string;
 }
 

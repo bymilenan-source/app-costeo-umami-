@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useToast } from "@/lib/useToast";
 import { Card, Field, PrimaryButton, SectionTitle, Toast, inputStyle } from "@/components/ui";
+import { PushNotificationsCard } from "@/components/dashboard/PushNotificationsCard";
 import type { Profile } from "@/lib/types";
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
@@ -196,6 +197,8 @@ export default function NegocioPage() {
           ))}
         </div>
       </Card>
+
+      <PushNotificationsCard />
 
       <PrimaryButton onClick={save} full>Guardar cambios</PrimaryButton>
       <Toast message={toast} />

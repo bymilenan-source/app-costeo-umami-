@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Plus, Trash2, Clock, AlertCircle, X, Pencil } from "lucide-react";
+import { Plus, Trash2, Clock, AlertCircle, X, Pencil, CalendarPlus } from "lucide-react";
 import { STATUS, uid } from "@/lib/constants";
 import { money } from "@/lib/costing";
 import { createClient } from "@/lib/supabase/client";
@@ -11,6 +11,21 @@ import { useProfile } from "@/lib/profile-context";
 import { useToast } from "@/lib/useToast";
 import { Card, Field, PrimaryButton, SectionTitle, Toast, inputStyle } from "@/components/ui";
 import type { Order, OrderStatus, Recipe } from "@/lib/types";
+
+function googleCalendarUrl(order: Order) {
+  if (!order.delivery_date) return null;
+  const start = order.delivery_date.replace(/-/g, "");
+  const endDate = new Date(`${order.delivery_date}T00:00:00`);
+  endDate.setDate(endDate.getDate() + 1);
+  const end = endDate.toISOString().slice(0, 10).replace(/-/g, "");
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: `Entrega: ${order.client_name} — ${order.product_name}`,
+    dates: `${start}/${end}`,
+    details: `Pedido de ${order.client_name}: ${order.product_name} x${order.quantity}.${order.notes ? ` Notas: ${order.notes}` : ""}`,
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
 
 function PedidosPageInner() {
   const supabase = useMemo(() => createClient(), []);
@@ -257,6 +272,17 @@ function PedidosPageInner() {
                     {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                   </select>
                   <button onClick={() => openEdit(o)} style={{ color: "#1B2A4A" }}><Pencil size={15} /></button>
+                  {googleCalendarUrl(o) && (
+                    <a
+                      href={googleCalendarUrl(o)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Agregar a mi calendario"
+                      style={{ color: "#1B2A4A" }}
+                    >
+                      <CalendarPlus size={15} />
+                    </a>
+                  )}
                   <Link href={`/dashboard/pedidos/${o.id}/factura`} className="text-xs font-semibold px-2.5 py-1.5 rounded-md" style={{ background: "#1B2A4A", color: "#fff" }}>Factura</Link>
                   <button onClick={() => remove(o.id)} style={{ color: "#B25C5C" }}><Trash2 size={14} /></button>
                 </div>
