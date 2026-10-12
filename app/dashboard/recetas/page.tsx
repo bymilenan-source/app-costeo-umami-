@@ -9,6 +9,13 @@ import { useToast } from "@/lib/useToast";
 import { Card, Field, PrimaryButton, Row, SectionTitle, Toast, inputStyle } from "@/components/ui";
 import type { Recipe, RecipeComponent, RecipeSupplyItem, Supply } from "@/lib/types";
 
+// Acepta "1,5" y "1.5": en teclados en español la coma es el decimal y
+// un <input type="text" inputMode="decimal"> la rechazaba dejando la cantidad vacía.
+const toNum = (v: string | number) => {
+  const n = parseFloat(String(v).trim().replace(",", "."));
+  return Number.isFinite(n) ? n : NaN;
+};
+
 interface DraftItem { key: string; supplyId: string; qty: string }
 interface DraftComponent { key: string; componentRecipeId: string; fraction: string }
 interface Draft {
@@ -33,6 +40,9 @@ export default function RecetasPage() {
   const [components, setComponents] = useState<RecipeComponent[]>([]);
   const [supplies, setSupplies] = useState<Supply[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
+  // Error de guardado visible hasta que se corrija (el toast dura 2 s y se perdía).
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const load = async () => {
     const [{ data: r }, { data: si }, { data: c }, { data: s }] = await Promise.all([
@@ -99,11 +109,11 @@ export default function RecetasPage() {
     for (const it of draft.items) {
       const supply = supplies.find((s) => s.id === it.supplyId);
       if (!supply) continue;
-      const cost = Number(supply.unit_cost) * (parseFloat(it.qty) || 0);
+      const cost = Number(supply.unit_cost) * (toNum(it.qty) || 0);
       if (supply.kind === "insumo") insumoCost += cost; else ingredientCost += cost;
     }
     const subRecipeDetails = draft.components.map((c) => {
-      const fraction = parseFloat(c.fraction) || 0;
+      const fraction = toNum(c.fraction) || 0;
       let cost = 0;
       try {
         cost = computeRecipeCost(c.componentRecipeId, graph).totalCost * fraction;
@@ -113,13 +123,13 @@ export default function RecetasPage() {
       return { name: recipes.find((r) => r.id === c.componentRecipeId)?.name ?? "Sub-receta", fraction, cost };
     });
     const subRecipeCost = subRecipeDetails.reduce((s, d) => s + d.cost, 0);
-    const laborCost = (parseFloat(draft.laborHours) || 0) * (parseFloat(draft.laborRate) || 0);
+    const laborCost = (toNum(draft.laborHours) || 0) * (toNum(draft.laborRate) || 0);
     const subtotal = ingredientCost + insumoCost + subRecipeCost + laborCost;
-    const indirectCost = subtotal * ((parseFloat(draft.indirectPct) || 0) / 100);
+    const indirectCost = subtotal * ((toNum(draft.indirectPct) || 0) / 100);
     const totalCost = subtotal + indirectCost;
-    const portions = parseFloat(draft.portions) || 1;
+    const portions = toNum(draft.portions) || 1;
     const costPerPortion = totalCost / portions;
-    const suggestedTotal = totalCost * (1 + (parseFloat(draft.marginPct) || 0) / 100);
+    const suggestedTotal = totalCost * (1 + (toNum(draft.marginPct) || 0) / 100);
     const pricePerPortion = suggestedTotal / portions;
     return { ingredientCost, insumoCost, subRecipeCost, subRecipeDetails, laborCost, subtotal, indirectCost, totalCost, costPerPortion, suggestedTotal, pricePerPortion };
   }, [draft, supplies, graph, recipes]);
@@ -134,9 +144,34 @@ export default function RecetasPage() {
     });
 
   const save = async () => {
+    if (!draft || saving) return;
+    setSaveError(null);
+    setSaving(true);
+    try {
+      await saveInner();
+    } catch (e) {
+      console.error("save", e);
+      setSaveError(`Error inesperado al guardar: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveInner = async () => {
     if (!draft) return;
     if (!draft.name || (draft.items.length === 0 && draft.components.length === 0)) {
       notify("Ponle nombre y al menos un ingrediente o sub-receta");
+      return;
+    }
+    // Antes, las filas sin cantidad se descartaban en silencio al guardar.
+    const sinCantidad = draft.items.filter((it) => !(toNum(it.qty) > 0));
+    if (sinCantidad.length) {
+      const nombres = sinCantidad.map((it) => supplies.find((s) => s.id === it.supplyId)?.name ?? "un elemento").join(", ");
+      notify(`Falta la cantidad de: ${nombres}`);
+      return;
+    }
+    if (draft.components.some((c) => !(toNum(c.fraction) > 0))) {
+      notify("Falta la proporción de una sub-receta");
       return;
     }
     const { data: userData } = await supabase.auth.getUser();
@@ -146,33 +181,77 @@ export default function RecetasPage() {
       id: draft.id,
       user_id: userId,
       name: draft.name,
-      portions: parseFloat(draft.portions) || 1,
-      labor_hours: parseFloat(draft.laborHours) || 0,
-      labor_rate: parseFloat(draft.laborRate) || 0,
-      indirect_pct: parseFloat(draft.indirectPct) || 0,
-      margin_pct: parseFloat(draft.marginPct) || 0,
+      portions: toNum(draft.portions) || 1,
+      labor_hours: toNum(draft.laborHours) || 0,
+      labor_rate: toNum(draft.laborRate) || 0,
+      indirect_pct: toNum(draft.indirectPct) || 0,
+      margin_pct: toNum(draft.marginPct) || 0,
     };
 
     const { error: recipeError } = await supabase.from("recipes").upsert(recipeRow);
     if (recipeError) { notify("No se pudo guardar la receta"); return; }
 
-    await supabase.from("recipe_supply_items").delete().eq("recipe_id", draft.id);
-    await supabase.from("recipe_components").delete().eq("recipe_id", draft.id);
+    // Primero se insertan las filas nuevas y solo si eso funciona se borran
+    // las anteriores. Antes se borraba todo primero y, si la inserción
+    // fallaba, la receta quedaba vacía sin ningún aviso.
+    const newItems = draft.items
+      .filter((it) => it.supplyId && toNum(it.qty) > 0)
+      .map((it) => ({ id: uid(), recipe_id: draft.id, supply_id: it.supplyId, qty: toNum(it.qty) }));
+    const newComponents = draft.components
+      .filter((c) => c.componentRecipeId && toNum(c.fraction) > 0)
+      .map((c) => ({ id: uid(), recipe_id: draft.id, component_recipe_id: c.componentRecipeId, fraction: toNum(c.fraction) }));
 
-    const validItems = draft.items.filter((it) => it.supplyId && parseFloat(it.qty) > 0);
-    if (validItems.length) {
-      await supabase.from("recipe_supply_items").insert(
-        validItems.map((it) => ({ id: uid(), recipe_id: draft.id, supply_id: it.supplyId, qty: parseFloat(it.qty) }))
-      );
+    if (newItems.length) {
+      const { error } = await supabase.from("recipe_supply_items").insert(newItems);
+      if (error) {
+        console.error("recipe_supply_items insert", error);
+        setSaveError(`No se guardaron los ingredientes: ${error.message}${error.code ? ` (código ${error.code})` : ""}`);
+        return;
+      }
     }
-    const validComponents = draft.components.filter((c) => c.componentRecipeId && parseFloat(c.fraction) > 0);
-    if (validComponents.length) {
-      await supabase.from("recipe_components").insert(
-        validComponents.map((c) => ({ id: uid(), recipe_id: draft.id, component_recipe_id: c.componentRecipeId, fraction: parseFloat(c.fraction) }))
-      );
+    if (newComponents.length) {
+      const { error } = await supabase.from("recipe_components").insert(newComponents);
+      if (error) {
+        console.error("recipe_components insert", error);
+        if (newItems.length) {
+          await supabase.from("recipe_supply_items").delete().in("id", newItems.map((r) => r.id));
+        }
+        setSaveError(`No se guardaron las sub-recetas: ${error.message}${error.code ? ` (código ${error.code})` : ""}`);
+        return;
+      }
     }
 
-    notify("Receta guardada");
+    const keepItemIds = newItems.map((r) => r.id);
+    const keepCompIds = newComponents.map((r) => r.id);
+    let delItems = supabase.from("recipe_supply_items").delete().eq("recipe_id", draft.id);
+    if (keepItemIds.length) delItems = delItems.not("id", "in", `(${keepItemIds.join(",")})`);
+    let delComps = supabase.from("recipe_components").delete().eq("recipe_id", draft.id);
+    if (keepCompIds.length) delComps = delComps.not("id", "in", `(${keepCompIds.join(",")})`);
+    const [{ error: e1 }, { error: e2 }] = await Promise.all([delItems, delComps]);
+    if (e1 || e2) {
+      console.error("cleanup", e1, e2);
+      notify("Receta guardada, pero quedaron líneas viejas. Ábrela y revísala.");
+      setDraft(null);
+      load();
+      return;
+    }
+
+    // Verificación: releer de la base de datos lo que quedó guardado.
+    const { data: saved, error: readError } = await supabase
+      .from("recipe_supply_items").select("id").eq("recipe_id", draft.id);
+    const savedCount = saved?.length ?? 0;
+    if (readError || savedCount !== newItems.length) {
+      console.error("verify", readError, savedCount, newItems.length);
+      setSaveError(
+        `La receta se guardó, pero al revisarla hay ${savedCount} de ${newItems.length} ingredientes/insumos.` +
+          (readError ? ` Error: ${readError.message}` : "") +
+          " Toma captura de este mensaje."
+      );
+      load();
+      return;
+    }
+
+    notify(`Receta guardada con ${savedCount} ingredientes/insumos`);
     setDraft(null);
     load();
   };
@@ -200,52 +279,90 @@ export default function RecetasPage() {
               <input style={inputStyle} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Ej. Vasito de bizcocho" />
             </Field>
             <Field label="Cantidad de porciones que rinde">
-              <input style={inputStyle} type="number" value={draft.portions} onChange={(e) => setDraft({ ...draft, portions: e.target.value })} />
+              <input style={inputStyle} type="text" inputMode="decimal" value={draft.portions} onChange={(e) => setDraft({ ...draft, portions: e.target.value })} />
             </Field>
           </div>
         </Card>
 
-        <Card>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold" style={{ color: "#101B33" }}>Ingredientes e insumos usados</span>
-            <button
-              onClick={() => {
-                if (supplies.length === 0) { notify("Agrega ingredientes o insumos primero"); return; }
-                setDraft({ ...draft, items: [...draft.items, { key: uid(), supplyId: supplies[0].id, qty: "" }] });
-              }}
-              className="text-xs font-medium flex items-center gap-1" style={{ color: "#1B2A4A" }}
-            >
-              <Plus size={13} /> agregar
-            </button>
-          </div>
-          <div className="space-y-2">
-            {draft.items.map((it) => {
-              const supply = supplies.find((s) => s.id === it.supplyId);
-              return (
-                <div key={it.key} className="flex items-center gap-2">
-                  <select
-                    style={{ ...inputStyle, flex: 2 }}
-                    value={it.supplyId}
-                    onChange={(e) => setDraft({ ...draft, items: draft.items.map((x) => x.key === it.key ? { ...x, supplyId: e.target.value } : x) })}
-                  >
-                    {supplies.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name} {s.kind === "insumo" ? "(insumo)" : ""}</option>
-                    ))}
-                  </select>
-                  <input
-                    style={{ ...inputStyle, flex: 1 }}
-                    type="number"
-                    placeholder={supply ? supply.unit : "cant"}
-                    value={it.qty}
-                    onChange={(e) => setDraft({ ...draft, items: draft.items.map((x) => x.key === it.key ? { ...x, qty: e.target.value } : x) })}
-                  />
-                  <button onClick={() => setDraft({ ...draft, items: draft.items.filter((x) => x.key !== it.key) })} style={{ color: "#B25C5C" }}><Trash2 size={15} /></button>
-                </div>
-              );
-            })}
-            {draft.items.length === 0 && <p className="text-xs" style={{ color: "#B0A29C" }}>Sin ingredientes ni insumos aún.</p>}
-          </div>
-        </Card>
+        {(["ingrediente", "insumo"] as const).map((kind) => {
+          const isInsumo = kind === "insumo";
+          const options = supplies.filter((s) => s.kind === kind);
+          // Una fila pertenece a la lista de su tipo; si el insumo/ingrediente
+          // ya no existe, se muestra en la lista de ingredientes para poder borrarla.
+          const rows = draft.items.filter((it) => {
+            const s = supplies.find((x) => x.id === it.supplyId);
+            return s ? s.kind === kind : !isInsumo;
+          });
+          return (
+            <Card key={kind}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold" style={{ color: "#101B33" }}>
+                  {isInsumo ? "Insumos y empaque (desechables)" : "Ingredientes"}
+                </span>
+                <button
+                  onClick={() => {
+                    if (options.length === 0) {
+                      notify(isInsumo ? "Primero agrega tus insumos en la pestaña Insumos" : "Primero agrega tus ingredientes en la pestaña Ingredientes");
+                      return;
+                    }
+                    setDraft({ ...draft, items: [...draft.items, { key: uid(), supplyId: options[0].id, qty: "" }] });
+                  }}
+                  className="text-xs font-medium flex items-center gap-1" style={{ color: "#1B2A4A" }}
+                >
+                  <Plus size={13} /> agregar
+                </button>
+              </div>
+              {isInsumo && (
+                <p className="text-[11px] mb-2" style={{ color: "#8A7A75" }}>
+                  Cajas, fundas, cucharitas, servilletas, etiquetas. Pon cuántas unidades usa esta receta.
+                </p>
+              )}
+              <div className="space-y-2">
+                {rows.map((it) => {
+                  const supply = supplies.find((s) => s.id === it.supplyId);
+                  const qty = toNum(it.qty) || 0;
+                  const lineCost = supply ? Number(supply.unit_cost) * qty : 0;
+                  return (
+                    <div key={it.key}>
+                    <div className="flex items-center gap-2">
+                      <select
+                        style={{ ...inputStyle, flex: 2 }}
+                        value={it.supplyId}
+                        onChange={(e) => setDraft({ ...draft, items: draft.items.map((x) => x.key === it.key ? { ...x, supplyId: e.target.value } : x) })}
+                      >
+                        {!supply && <option value={it.supplyId}>(eliminado)</option>}
+                        {options.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        style={{ ...inputStyle, flex: 1 }}
+                        type="text" inputMode="decimal"
+                        placeholder={supply ? supply.unit : "cant"}
+                        value={it.qty}
+                        onChange={(e) => setDraft({ ...draft, items: draft.items.map((x) => x.key === it.key ? { ...x, qty: e.target.value } : x) })}
+                      />
+                      <button onClick={() => setDraft({ ...draft, items: draft.items.filter((x) => x.key !== it.key) })} style={{ color: "#B25C5C" }}><Trash2 size={15} /></button>
+                    </div>
+                    {supply && (
+                      <div className="text-[11px] mt-1 pl-1" style={{ fontFamily: "var(--font-plex-mono)", color: qty > 0 ? "#8A7A75" : "#B25C5C" }}>
+                        {qty > 0
+                          ? `${qty} ${supply.unit} × ${money(supply.unit_cost)}/${supply.unit} = ${money(lineCost)}`
+                          : `Escribe la cantidad en ${supply.unit}`}
+                      </div>
+                    )}
+                    </div>
+                  );
+                })}
+                {rows.length === 0 && (
+                  <p className="text-xs" style={{ color: "#B0A29C" }}>
+                    {isInsumo ? "Sin insumos aún." : "Sin ingredientes aún."}
+                  </p>
+                )}
+              </div>
+            </Card>
+          );
+        })}
 
         <Card>
           <div className="flex items-center justify-between mb-2">
@@ -281,7 +398,7 @@ export default function RecetasPage() {
                 </select>
                 <input
                   style={{ ...inputStyle, flex: 1 }}
-                  type="number" step="0.05"
+                  type="text" inputMode="decimal"
                   placeholder="0.25"
                   value={c.fraction}
                   onChange={(e) => setDraft({ ...draft, components: draft.components.map((x) => x.key === c.key ? { ...x, fraction: e.target.value } : x) })}
@@ -296,16 +413,16 @@ export default function RecetasPage() {
         <Card>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Horas de mano de obra">
-              <input style={inputStyle} type="number" value={draft.laborHours} onChange={(e) => setDraft({ ...draft, laborHours: e.target.value })} placeholder="2" />
+              <input style={inputStyle} type="text" inputMode="decimal" value={draft.laborHours} onChange={(e) => setDraft({ ...draft, laborHours: e.target.value })} placeholder="2" />
             </Field>
             <Field label="Tarifa por hora (RD$)">
-              <input style={inputStyle} type="number" value={draft.laborRate} onChange={(e) => setDraft({ ...draft, laborRate: e.target.value })} placeholder="150" />
+              <input style={inputStyle} type="text" inputMode="decimal" value={draft.laborRate} onChange={(e) => setDraft({ ...draft, laborRate: e.target.value })} placeholder="150" />
             </Field>
             <Field label="Costos indirectos (%)">
-              <input style={inputStyle} type="number" value={draft.indirectPct} onChange={(e) => setDraft({ ...draft, indirectPct: e.target.value })} />
+              <input style={inputStyle} type="text" inputMode="decimal" value={draft.indirectPct} onChange={(e) => setDraft({ ...draft, indirectPct: e.target.value })} />
             </Field>
             <Field label="Margen de ganancia (%)">
-              <input style={inputStyle} type="number" value={draft.marginPct} onChange={(e) => setDraft({ ...draft, marginPct: e.target.value })} />
+              <input style={inputStyle} type="text" inputMode="decimal" value={draft.marginPct} onChange={(e) => setDraft({ ...draft, marginPct: e.target.value })} />
             </Field>
           </div>
         </Card>
@@ -328,7 +445,16 @@ export default function RecetasPage() {
           </div>
         </Card>
 
-        <PrimaryButton onClick={save} full>Guardar receta</PrimaryButton>
+        {saveError && (
+          <Card style={{ background: "#F6E3E3", borderColor: "#B25C5C" }}>
+            <p className="text-sm font-semibold" style={{ color: "#8A3A3A" }}>No se pudo guardar completo</p>
+            <p className="text-xs mt-1" style={{ color: "#8A3A3A" }}>{saveError}</p>
+          </Card>
+        )}
+        <PrimaryButton onClick={save} full>{saving ? "Guardando…" : "Guardar receta"}</PrimaryButton>
+        <p className="text-[10px] text-center" style={{ color: "#B0A29C" }}>
+          versión {(process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7)}
+        </p>
         <Toast message={toast} />
       </div>
     );
