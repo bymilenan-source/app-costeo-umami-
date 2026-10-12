@@ -111,26 +111,28 @@ function PedidosPageInner() {
   // Llegada desde la sección Clientes: ?nuevo=1&cliente=…&tel=…[&repetir=<id pedido>]
   useEffect(() => {
     if (loading || searchParams.get("nuevo") !== "1") return;
-    const base = blank();
-    const prev = orders.find((o) => o.id === searchParams.get("repetir"));
-    setEditingId(null);
-    setForm({
-      ...base,
-      clientName: searchParams.get("cliente") ?? "",
-      clientPhone: searchParams.get("tel") ?? "",
-      ...(prev
-        ? {
-            productName: prev.product_name,
-            recipeId: prev.recipe_id ?? "",
-            quantity: String(prev.quantity),
-            unitPrice: String(prev.unit_price),
-            notes: prev.notes,
-            invoiceMode: prev.invoice_mode,
-          }
-        : {}),
-    });
-    setShowForm(true);
-    router.replace("/dashboard/pedidos");
+    (() => {
+      const base = blank();
+      const prev = orders.find((o) => o.id === searchParams.get("repetir"));
+      setEditingId(null);
+      setForm({
+        ...base,
+        clientName: searchParams.get("cliente") ?? "",
+        clientPhone: searchParams.get("tel") ?? "",
+        ...(prev
+          ? {
+              productName: prev.product_name,
+              recipeId: prev.recipe_id ?? "",
+              quantity: String(prev.quantity),
+              unitPrice: String(prev.unit_price),
+              notes: prev.notes,
+              invoiceMode: prev.invoice_mode,
+            }
+          : {}),
+      });
+      setShowForm(true);
+      router.replace("/dashboard/pedidos");
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, loading, orders]);
 

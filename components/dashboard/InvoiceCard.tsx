@@ -27,7 +27,10 @@ export interface InvoiceOrderData {
 function useSquareImage(url: string | undefined | null, size = 192) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
-    if (!url) { setSrc(null); return; }
+    if (!url) {
+      (() => setSrc(null))();
+      return;
+    }
     let cancelled = false;
     const img = new Image();
     img.crossOrigin = "anonymous";
