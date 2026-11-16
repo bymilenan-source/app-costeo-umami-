@@ -462,7 +462,7 @@ export default function RecetasPage() {
 
   return (
     <div className="space-y-4">
-      <SectionTitle sub="Calcula el costo real y el precio sugerido de cada producto, incluyendo sub-recetas.">Costos y Precios</SectionTitle>
+      <SectionTitle sub="Calcula el costo real y el precio sugerido de cada producto, incluyendo sub-recetas.">Recetas y Precios</SectionTitle>
       <PrimaryButton onClick={openNew} full><Plus size={16} /> Nueva receta</PrimaryButton>
 
       <div className="space-y-2">
