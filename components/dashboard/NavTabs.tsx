@@ -7,7 +7,7 @@ import { COLORS } from "@/lib/constants";
 
 const NAV = [
   { href: "/dashboard", label: "Resumen", icon: LayoutDashboard },
-  { href: "/dashboard/recetas", label: "Costos y Precios", icon: ChefHat },
+  { href: "/dashboard/recetas", label: "Recetas y Precios", icon: ChefHat },
   { href: "/dashboard/pedidos", label: "Pedidos y Facturas", icon: Receipt },
   { href: "/dashboard/clientes", label: "Clientes", icon: Users },
   { href: "/dashboard/ingredientes", label: "Ingredientes", icon: Package },

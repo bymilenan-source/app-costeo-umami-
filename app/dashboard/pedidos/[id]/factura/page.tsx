@@ -8,6 +8,8 @@ import { useProfile } from "@/lib/profile-context";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/ui";
 import { InvoiceCard } from "@/components/dashboard/InvoiceCard";
+import { whatsappLink } from "@/lib/clients";
+import { money } from "@/lib/costing";
 import type { Order } from "@/lib/types";
 
 export default function FacturaPage() {
@@ -147,6 +149,26 @@ export default function FacturaPage() {
     URL.revokeObjectURL(url);
   };
 
+  const sendWhatsApp = () => {
+    if (!order) return;
+    const total = (Number(order.unit_price) || 0) * (Number(order.quantity) || 0);
+    const deposit = Number(order.deposit) || 0;
+    const lines = [
+      `Hola ${order.client_name} 👋, aquí está el resumen de tu pedido${profile?.business_name ? ` con ${profile.business_name}` : ""}:`,
+      ``,
+      `• ${order.product_name} x${order.quantity}`,
+      `• Total: ${money(total)}`,
+      ...(deposit > 0 ? [`• Abono recibido: ${money(deposit)}`] : []),
+      `• Balance pendiente: ${money(total - deposit)}`,
+      ...(order.delivery_date ? [`• Entrega: ${order.delivery_date}`] : []),
+      ``,
+      `¡Gracias por tu compra!`,
+    ];
+    const text = encodeURIComponent(lines.join("\n"));
+    const url = order.client_phone ? `${whatsappLink(order.client_phone)}?text=${text}` : `https://wa.me/?text=${text}`;
+    window.open(url, "_blank");
+  };
+
   const shareFile = async () => {
     if (!previewFile || !order) return;
     setSharing(true);
@@ -244,6 +266,13 @@ export default function FacturaPage() {
               style={{ background: "#1B2A4A", color: "#fff" }}
             >
               <Share2 size={16} /> {sharing ? "Compartiendo…" : "Compartir con el cliente"}
+            </button>
+            <button
+              onClick={sendWhatsApp}
+              className="mt-2 w-full flex items-center justify-center gap-1.5 text-sm font-semibold py-3 rounded-lg"
+              style={{ background: "#4E7A50", color: "#fff" }}
+            >
+              Enviar por WhatsApp
             </button>
           </div>
         </div>
