@@ -3,11 +3,6 @@ import webpush from "web-push";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Order } from "@/lib/types";
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT!,
-  process.env.VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-);
 
 function toDateStr(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -18,6 +13,14 @@ export async function GET(request: Request) {
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
+
+  const { VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY } = process.env;
+  if (!VAPID_SUBJECT || !VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    return NextResponse.json({ error: "Faltan las claves VAPID" }, { status: 500 });
+  }
+  // Se configura aquí y no al cargar el archivo: si faltan las claves en
+  // Vercel, antes esto rompía todo el build de la app.
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
   const admin = createAdminClient();
 
