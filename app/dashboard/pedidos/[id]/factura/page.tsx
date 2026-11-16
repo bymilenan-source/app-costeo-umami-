@@ -18,7 +18,8 @@ export default function FacturaPage() {
   const [order, setOrder] = useState<Order | null | undefined>(undefined);
   const [generating, setGenerating] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const [previewCanvas, setPreviewCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
   const invoiceRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast, notify } = useToast();
@@ -103,13 +104,32 @@ export default function FacturaPage() {
     setPhotoUrl(null);
   };
 
+  const closePreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+    setPreviewFile(null);
+  };
+
+  // Genera la imagen y el archivo AQUÍ (al abrir la vista previa), no al
+  // compartir: así el botón "Compartir" llama a navigator.share() de
+  // inmediato, sin ningún `await` antes, porque varios Android solo dejan
+  // abrir el panel de compartir si viene pegado al toque del usuario — un
+  // `await` previo (como generar la imagen) rompe ese permiso y falla con
+  // "No se pudo compartir la factura".
   const openPreview = async () => {
-    if (!invoiceRef.current) return;
+    if (!invoiceRef.current || !order) return;
     setGenerating(true);
     try {
       const html2canvas = (await import("html2canvas")).default;
       const canvas = await html2canvas(invoiceRef.current, { useCORS: true, scale: 2, backgroundColor: "#ffffff" });
-      setPreviewCanvas(canvas);
+      const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!blob) {
+        notify("No se pudo generar la imagen");
+        return;
+      }
+      const fileName = `factura-${order.client_name}.png`.replace(/\s+/g, "-").toLowerCase();
+      setPreviewFile(new File([blob], fileName, { type: "image/png" }));
+      setPreviewUrl(URL.createObjectURL(blob));
     } catch {
       notify("No se pudo generar la vista previa");
     } finally {
@@ -117,35 +137,35 @@ export default function FacturaPage() {
     }
   };
 
-  const shareCanvas = async () => {
-    if (!previewCanvas || !order) return;
+  const downloadPreview = () => {
+    if (!previewFile) return;
+    const url = URL.createObjectURL(previewFile);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = previewFile.name;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const shareFile = async () => {
+    if (!previewFile || !order) return;
     setSharing(true);
     try {
-      const blob: Blob | null = await new Promise((resolve) => previewCanvas.toBlob(resolve, "image/png"));
-      if (!blob) {
-        notify("No se pudo generar la imagen");
-        return;
-      }
-      const fileName = `factura-${order.client_name}.png`.replace(/\s+/g, "-").toLowerCase();
-      const file = new File([blob], fileName, { type: "image/png" });
-
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: "Factura", text: `Factura para ${order.client_name}` });
-        setPreviewCanvas(null);
+      if (navigator.canShare?.({ files: [previewFile] })) {
+        await navigator.share({ files: [previewFile], title: "Factura", text: `Factura para ${order.client_name}` });
+        closePreview();
       } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = fileName;
-        a.click();
-        URL.revokeObjectURL(url);
+        downloadPreview();
         notify("Imagen descargada. Compártela desde tu galería.");
-        setPreviewCanvas(null);
+        closePreview();
       }
     } catch (err) {
-      if ((err as Error)?.name !== "AbortError") {
-        notify("No se pudo compartir la factura");
-      }
+      if ((err as Error)?.name === "AbortError") return;
+      // El panel de compartir falló por alguna razón del dispositivo: igual
+      // dejamos la imagen descargada, para que no se quede sin poder enviarla.
+      downloadPreview();
+      notify("No se pudo abrir el menú de compartir. Se descargó la imagen para que la envíes desde tu galería.");
+      closePreview();
     } finally {
       setSharing(false);
     }
@@ -206,19 +226,19 @@ export default function FacturaPage() {
         <InvoiceCard profile={profile} order={order} photoUrl={photoUrl} />
       </div>
 
-      {previewCanvas && (
+      {previewUrl && (
         <div className="fixed inset-0 z-50 flex flex-col print:hidden" style={{ background: "rgba(16,27,51,0.92)" }}>
           <div className="flex items-center justify-between px-4 py-3 shrink-0">
             <span className="text-sm font-semibold" style={{ color: "#fff" }}>Así le llegará al cliente</span>
-            <button onClick={() => setPreviewCanvas(null)} style={{ color: "#fff" }}><X size={22} /></button>
+            <button onClick={closePreview} style={{ color: "#fff" }}><X size={22} /></button>
           </div>
           <div className="flex-1 overflow-auto px-4 pb-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={previewCanvas.toDataURL("image/png")} alt="Vista previa de la factura" className="w-full rounded-lg" />
+            <img src={previewUrl} alt="Vista previa de la factura" className="w-full rounded-lg" />
           </div>
           <div className="p-4 shrink-0">
             <button
-              onClick={shareCanvas}
+              onClick={shareFile}
               disabled={sharing}
               className="w-full flex items-center justify-center gap-1.5 text-sm font-semibold py-3 rounded-lg disabled:opacity-50"
               style={{ background: "#1B2A4A", color: "#fff" }}
