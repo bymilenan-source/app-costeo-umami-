@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import { uid } from "@/lib/constants";
-import { buildRecipeGraph, computeRecipeCost, money, wouldCreateCycle } from "@/lib/costing";
+import { buildRecipeGraph, computeRecipeCost, money, priceFromMargin, wouldCreateCycle } from "@/lib/costing";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/lib/useToast";
 import { Card, Field, PrimaryButton, Row, SectionTitle, Toast, inputStyle } from "@/components/ui";
@@ -129,7 +129,7 @@ export default function RecetasPage() {
     const totalCost = subtotal + indirectCost;
     const portions = toNum(draft.portions) || 1;
     const costPerPortion = totalCost / portions;
-    const suggestedTotal = totalCost * (1 + (toNum(draft.marginPct) || 0) / 100);
+    const suggestedTotal = priceFromMargin(totalCost, toNum(draft.marginPct) || 0);
     const pricePerPortion = suggestedTotal / portions;
     return { ingredientCost, insumoCost, subRecipeCost, subRecipeDetails, laborCost, subtotal, indirectCost, totalCost, costPerPortion, suggestedTotal, pricePerPortion };
   }, [draft, supplies, graph, recipes]);

@@ -84,7 +84,7 @@ export function computeRecipeCost(
   const totalCost = subtotal + indirectCost;
   const portions = num(recipe.portions) || 1;
   const costPerPortion = totalCost / portions;
-  const suggestedTotal = totalCost * (1 + num(recipe.margin_pct) / 100);
+  const suggestedTotal = priceFromMargin(totalCost, num(recipe.margin_pct));
   const pricePerPortion = suggestedTotal / portions;
 
   return {
@@ -150,3 +150,13 @@ export function buildRecipeGraph(
 
 export const money = (n: unknown) =>
   `RD$${num(n).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * Precio de venta a partir de un margen de ganancia REAL sobre el precio.
+ * Ej.: costo 100 y margen 40% -> precio 166.67 (la ganancia es 40% del precio).
+ * El margen se limita a 0–95% para evitar divisiones por cero o precios absurdos.
+ */
+export function priceFromMargin(totalCost: number, marginPct: number): number {
+  const m = Math.min(Math.max(Number.isFinite(marginPct) ? marginPct : 0, 0), 95) / 100;
+  return totalCost / (1 - m);
+}
