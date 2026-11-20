@@ -1,5 +1,6 @@
 "use client";
 
+import { orderTotal } from "@/lib/orders";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Wallet, Target, Trash2, Plus, Check } from "lucide-react";
 import { COLORS, MONTH_NAMES, uid } from "@/lib/constants";
@@ -46,11 +47,11 @@ export default function ResumenPage() {
   }, [supabase]);
 
   const monthOrders = orders.filter((o) => monthKey(o.delivery_date) === key);
-  const facturacion = monthOrders.reduce((s, o) => s + (Number(o.unit_price) || 0) * (Number(o.quantity) || 0), 0);
+  const facturacion = monthOrders.reduce((s, o) => s + orderTotal(o), 0);
   const pendiente = monthOrders
     .filter((o) => o.status !== "pagado")
     .reduce((s, o) => {
-      const total = (Number(o.unit_price) || 0) * (Number(o.quantity) || 0);
+      const total = orderTotal(o);
       return s + (total - (Number(o.deposit) || 0));
     }, 0);
 
