@@ -7,11 +7,12 @@ import { Plus, Trash2, Clock, AlertCircle, X, Pencil, CalendarPlus } from "lucid
 import { STATUS, uid } from "@/lib/constants";
 import { buildRecipeGraph, computeRecipeCost, money, type RecipeGraph } from "@/lib/costing";
 import { deriveClients, matchClients } from "@/lib/clients";
+import { itemTotal, itemsSummary, orderItems, orderTotal } from "@/lib/orders";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useToast } from "@/lib/useToast";
 import { Card, Field, PrimaryButton, SectionTitle, Toast, inputStyle } from "@/components/ui";
-import type { Order, OrderStatus, Recipe, RecipeComponent, RecipeSupplyItem, Supply } from "@/lib/types";
+import type { Order, OrderItem, OrderStatus, Recipe, RecipeComponent, RecipeSupplyItem, Supply } from "@/lib/types";
 
 function googleCalendarUrl(order: Order) {
   if (!order.delivery_date) return null;
@@ -21,12 +22,25 @@ function googleCalendarUrl(order: Order) {
   const end = endDate.toISOString().slice(0, 10).replace(/-/g, "");
   const params = new URLSearchParams({
     action: "TEMPLATE",
-    text: `Entrega: ${order.client_name} — ${order.product_name}`,
+    text: `Entrega: ${order.client_name} — ${itemsSummary(orderItems(order))}`,
     dates: `${start}/${end}`,
-    details: `Pedido de ${order.client_name}: ${order.product_name} x${order.quantity}.${order.notes ? ` Notas: ${order.notes}` : ""}`,
+    details: `Pedido de ${order.client_name}: ${itemsSummary(orderItems(order))}.${order.notes ? ` Notas: ${order.notes}` : ""}`,
   });
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
+
+type DraftItem = { key: string; recipeId: string; productName: string; quantity: string; unitPrice: string };
+
+const blankItem = (): DraftItem => ({ key: uid(), recipeId: "", productName: "", quantity: "1", unitPrice: "" });
+
+const toDraftItems = (items: OrderItem[]): DraftItem[] =>
+  items.map((it) => ({
+    key: uid(),
+    recipeId: it.recipe_id ?? "",
+    productName: it.product_name,
+    quantity: String(it.quantity),
+    unitPrice: String(it.unit_price),
+  }));
 
 function PedidosPageInner() {
   const supabase = useMemo(() => createClient(), []);
@@ -43,8 +57,8 @@ function PedidosPageInner() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const blank = () => ({
-    clientName: "", clientPhone: "", productName: "", recipeId: "",
-    quantity: "1", unitPrice: "", deliveryDate: "", notes: "", deposit: "",
+    clientName: "", clientPhone: "", items: [blankItem()] as DraftItem[],
+    deliveryDate: "", notes: "", deposit: "",
     invoiceMode: profile.invoice_mode, ncf: "",
   });
   const [form, setForm] = useState(blank());
@@ -82,10 +96,7 @@ function PedidosPageInner() {
     setForm({
       clientName: o.client_name,
       clientPhone: o.client_phone,
-      productName: o.product_name,
-      recipeId: o.recipe_id ?? "",
-      quantity: String(o.quantity),
-      unitPrice: String(o.unit_price),
+      items: toDraftItems(orderItems(o)),
       deliveryDate: o.delivery_date ?? "",
       notes: o.notes,
       deposit: String(o.deposit),
@@ -121,10 +132,7 @@ function PedidosPageInner() {
         clientPhone: searchParams.get("tel") ?? "",
         ...(prev
           ? {
-              productName: prev.product_name,
-              recipeId: prev.recipe_id ?? "",
-              quantity: String(prev.quantity),
-              unitPrice: String(prev.unit_price),
+              items: toDraftItems(orderItems(prev)),
               notes: prev.notes,
               invoiceMode: prev.invoice_mode,
             }
@@ -141,29 +149,49 @@ function PedidosPageInner() {
     ? matchClients(clients, form.clientName).filter((c) => c.name !== form.clientName)
     : [];
 
-  const recipePrice = (() => {
-    if (!form.recipeId || !graph) return null;
+  const recipePrice = (recipeId: string) => {
+    if (!recipeId || !graph) return null;
     try {
-      const c = computeRecipeCost(form.recipeId, graph);
-      const portions = Number(graph.recipes[form.recipeId]?.portions) || 1;
+      const c = computeRecipeCost(recipeId, graph);
+      const portions = Number(graph.recipes[recipeId]?.portions) || 1;
       return { whole: c.suggestedTotal, perPortion: c.pricePerPortion, portions };
     } catch {
       return null;
     }
-  })();
+  };
+
+  const setItem = (key: string, patch: Partial<DraftItem>) =>
+    setForm((f) => ({ ...f, items: f.items.map((it) => (it.key === key ? { ...it, ...patch } : it)) }));
+  const addItem = () => setForm((f) => ({ ...f, items: [...f.items, blankItem()] }));
+  const removeItem = (key: string) =>
+    setForm((f) => ({ ...f, items: f.items.length > 1 ? f.items.filter((it) => it.key !== key) : f.items }));
+
+  const draftItems: OrderItem[] = form.items
+    .filter((it) => it.productName.trim())
+    .map((it) => ({
+      product_name: it.productName.trim(),
+      recipe_id: it.recipeId || null,
+      quantity: parseFloat(it.quantity) || 1,
+      unit_price: parseFloat(it.unitPrice) || 0,
+    }));
+  const draftTotal = draftItems.reduce((s, it) => s + itemTotal(it), 0);
 
   const save = async () => {
-    if (!form.clientName || !form.productName || !form.deliveryDate) {
-      notify("Completa cliente, producto y fecha de entrega");
+    if (!form.clientName || draftItems.length === 0 || !form.deliveryDate) {
+      notify("Completa cliente, al menos un producto y fecha de entrega");
       return;
     }
+    // Las columnas sueltas guardan un resumen (cantidad 1 × total) para que los
+    // pedidos de un solo producto y los cálculos viejos sigan funcionando.
+    const single = draftItems.length === 1 ? draftItems[0] : null;
     const patch = {
       client_name: form.clientName,
       client_phone: form.clientPhone,
-      product_name: form.productName,
-      recipe_id: form.recipeId || null,
-      quantity: parseFloat(form.quantity) || 1,
-      unit_price: parseFloat(form.unitPrice) || 0,
+      items: draftItems,
+      product_name: single ? single.product_name : itemsSummary(draftItems),
+      recipe_id: single ? single.recipe_id : null,
+      quantity: single ? single.quantity : 1,
+      unit_price: single ? single.unit_price : draftTotal,
       delivery_date: form.deliveryDate,
       notes: form.notes,
       deposit: parseFloat(form.deposit) || 0,
@@ -171,8 +199,17 @@ function PedidosPageInner() {
       ncf: form.ncf,
     };
 
+    // Si la base de datos aún no tiene la columna `items` (falta correr la
+    // migración 0004), se guarda sin ella: el pedido queda como una sola línea
+    // con el resumen y el total correcto, en vez de fallar.
+    const missingItemsColumn = (e: { message?: string } | null) => !!e?.message?.includes("items");
+
     if (editingId) {
-      const { data, error } = await supabase.from("orders").update(patch).eq("id", editingId).select().single();
+      let { data, error } = await supabase.from("orders").update(patch).eq("id", editingId).select().single();
+      if (missingItemsColumn(error)) {
+        const { items: _omit, ...legacy } = patch; void _omit;
+        ({ data, error } = await supabase.from("orders").update(legacy).eq("id", editingId).select().single());
+      }
       if (error) { notify("No se pudo actualizar el pedido"); return; }
       setOrders(orders.map((o) => (o.id === editingId ? (data as Order) : o)));
       setShowForm(false);
@@ -183,7 +220,11 @@ function PedidosPageInner() {
 
     const { data: userData } = await supabase.auth.getUser();
     const row = { id: uid(), user_id: userData.user!.id, status: "pendiente" as OrderStatus, ...patch };
-    const { data, error } = await supabase.from("orders").insert(row).select().single();
+    let { data, error } = await supabase.from("orders").insert(row).select().single();
+    if (missingItemsColumn(error)) {
+      const { items: _omit, ...legacy } = row; void _omit;
+      ({ data, error } = await supabase.from("orders").insert(legacy).select().single());
+    }
     if (error) { notify("No se pudo guardar el pedido"); return; }
     setOrders([data as Order, ...orders]);
     setForm(blank());
@@ -244,58 +285,88 @@ function PedidosPageInner() {
             <Field label="Teléfono del cliente">
               <input style={inputStyle} value={form.clientPhone} onChange={(e) => setForm({ ...form, clientPhone: e.target.value })} placeholder="809-000-0000" />
             </Field>
-            <Field label="Producto">
-              <select
-                style={inputStyle}
-                value={form.recipeId}
-                onChange={(e) => {
-                  const recipe = recipes.find((r) => r.id === e.target.value);
-                  let unitPrice = form.unitPrice;
-                  if (recipe && graph && !form.unitPrice) {
-                    try { unitPrice = String(Math.round(computeRecipeCost(recipe.id, graph).suggestedTotal)); } catch { /* sin precio */ }
-                  }
-                  setForm({ ...form, recipeId: e.target.value, productName: recipe ? recipe.name : form.productName, unitPrice });
-                }}
-              >
-                <option value="">Elegir de tus recetas</option>
-                {recipes.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
-              <input
-                style={{ ...inputStyle, marginTop: 6 }}
-                placeholder="O escribe el producto aquí"
-                value={form.productName}
-                onChange={(e) => setForm({ ...form, productName: e.target.value, recipeId: "" })}
-              />
-              {recipePrice && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, unitPrice: String(Math.round(recipePrice.whole)) })}
-                    className="text-[11px] font-semibold px-2.5 py-1.5 rounded-md border"
-                    style={{ borderColor: "#E4D8C6", color: "#1B2A4A", background: "#FFF9F0" }}
-                  >
-                    Receta completa: {money(Math.round(recipePrice.whole))}
-                  </button>
-                  {recipePrice.portions > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setForm({ ...form, unitPrice: String(Math.round(recipePrice.perPortion)) })}
-                      className="text-[11px] font-semibold px-2.5 py-1.5 rounded-md border"
-                      style={{ borderColor: "#E4D8C6", color: "#1B2A4A", background: "#FFF9F0" }}
+            <div className="space-y-3">
+              <span className="text-[11px] font-medium block" style={{ color: "#7A6B66" }}>
+                Productos{form.items.length > 1 ? ` (${form.items.length})` : ""}
+              </span>
+              {form.items.map((it, idx) => {
+                const rp = recipePrice(it.recipeId);
+                return (
+                  <div key={it.key} className="rounded-lg p-3 space-y-2" style={{ border: "1px solid #E4D8C6", background: "#FFFDF9" }}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold" style={{ color: "#8A7A75" }}>Producto {idx + 1}</span>
+                      {form.items.length > 1 && (
+                        <button type="button" onClick={() => removeItem(it.key)} aria-label="Quitar producto" style={{ color: "#B25C5C" }}>
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                    <select
+                      style={inputStyle}
+                      value={it.recipeId}
+                      onChange={(e) => {
+                        const recipe = recipes.find((r) => r.id === e.target.value);
+                        let unitPrice = it.unitPrice;
+                        if (recipe && graph && !it.unitPrice) {
+                          try { unitPrice = String(Math.round(computeRecipeCost(recipe.id, graph).suggestedTotal)); } catch { /* sin precio */ }
+                        }
+                        setItem(it.key, { recipeId: e.target.value, productName: recipe ? recipe.name : it.productName, unitPrice });
+                      }}
                     >
-                      Por porción: {money(Math.round(recipePrice.perPortion))}
-                    </button>
-                  )}
-                </div>
-              )}
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Cantidad">
-                <input style={inputStyle} type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
-              </Field>
-              <Field label="Precio unitario (RD$)">
-                <input style={inputStyle} type="number" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })} />
-              </Field>
+                      <option value="">Elegir de tus recetas</option>
+                      {recipes.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
+                    <input
+                      style={inputStyle}
+                      placeholder="O escribe el producto aquí"
+                      value={it.productName}
+                      onChange={(e) => setItem(it.key, { productName: e.target.value, recipeId: "" })}
+                    />
+                    {rp && (
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setItem(it.key, { unitPrice: String(Math.round(rp.whole)) })}
+                          className="text-[11px] font-semibold px-2.5 py-1.5 rounded-md border"
+                          style={{ borderColor: "#E4D8C6", color: "#1B2A4A", background: "#FFF9F0" }}
+                        >
+                          Receta completa: {money(Math.round(rp.whole))}
+                        </button>
+                        {rp.portions > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setItem(it.key, { unitPrice: String(Math.round(rp.perPortion)) })}
+                            className="text-[11px] font-semibold px-2.5 py-1.5 rounded-md border"
+                            style={{ borderColor: "#E4D8C6", color: "#1B2A4A", background: "#FFF9F0" }}
+                          >
+                            Por porción: {money(Math.round(rp.perPortion))}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Cantidad">
+                        <input style={inputStyle} type="number" inputMode="decimal" value={it.quantity} onChange={(e) => setItem(it.key, { quantity: e.target.value })} />
+                      </Field>
+                      <Field label="Precio unitario (RD$)">
+                        <input style={inputStyle} type="number" inputMode="decimal" value={it.unitPrice} onChange={(e) => setItem(it.key, { unitPrice: e.target.value })} />
+                      </Field>
+                    </div>
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                onClick={addItem}
+                className="w-full flex items-center justify-center gap-1.5 text-sm font-semibold py-2.5 rounded-lg border"
+                style={{ borderColor: "#1B2A4A", color: "#1B2A4A", borderStyle: "dashed" }}
+              >
+                <Plus size={15} /> Agregar otro producto
+              </button>
+              <div className="flex items-center justify-between text-sm font-semibold pt-1" style={{ color: "#101B33" }}>
+                <span>Total del pedido</span>
+                <span style={{ fontFamily: "var(--font-plex-mono)" }}>{money(draftTotal)}</span>
+              </div>
             </div>
             <Field label="Fecha de entrega">
               <input style={inputStyle} type="date" value={form.deliveryDate} onChange={(e) => setForm({ ...form, deliveryDate: e.target.value })} />
@@ -348,14 +419,14 @@ function PedidosPageInner() {
       <div className="space-y-2">
         {orders.length === 0 && <p className="text-sm text-center py-6" style={{ color: "#B0A29C" }}>No tienes pedidos registrados.</p>}
         {orders.map((o) => {
-          const total = (Number(o.unit_price) || 0) * (Number(o.quantity) || 0);
+          const total = orderTotal(o);
           const st = STATUS[o.status];
           return (
             <Card key={o.id}>
               <div className="flex items-start justify-between">
                 <button className="text-left flex-1" onClick={() => openEdit(o)}>
                   <div className="font-semibold text-sm" style={{ color: "#101B33" }}>{o.client_name}</div>
-                  <div className="text-xs mt-0.5" style={{ color: "#8A7A75" }}>{o.product_name} · x{o.quantity}</div>
+                  <div className="text-xs mt-0.5" style={{ color: "#8A7A75" }}>{itemsSummary(orderItems(o))}</div>
                   <div className="text-xs flex items-center gap-1 mt-1" style={{ color: "#8A7A75" }}>
                     <Clock size={11} /> entrega {o.delivery_date || "—"}
                   </div>

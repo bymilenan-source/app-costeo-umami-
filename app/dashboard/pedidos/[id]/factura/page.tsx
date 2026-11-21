@@ -10,6 +10,7 @@ import { Toast } from "@/components/ui";
 import { InvoiceCard } from "@/components/dashboard/InvoiceCard";
 import { whatsappLink } from "@/lib/clients";
 import { money } from "@/lib/costing";
+import { itemTotal, orderItems } from "@/lib/orders";
 import type { Order } from "@/lib/types";
 
 export default function FacturaPage() {
@@ -151,12 +152,13 @@ export default function FacturaPage() {
 
   const sendWhatsApp = () => {
     if (!order) return;
-    const total = (Number(order.unit_price) || 0) * (Number(order.quantity) || 0);
+    const items = orderItems(order);
+    const total = items.reduce((s, it) => s + itemTotal(it), 0);
     const deposit = Number(order.deposit) || 0;
     const lines = [
       `Hola ${order.client_name} 👋, aquí está el resumen de tu pedido${profile?.business_name ? ` con ${profile.business_name}` : ""}:`,
       ``,
-      `• ${order.product_name} x${order.quantity}`,
+      ...items.map((it) => `• ${it.product_name} x${it.quantity}${items.length > 1 ? ` — ${money(itemTotal(it))}` : ""}`),
       `• Total: ${money(total)}`,
       ...(deposit > 0 ? [`• Abono recibido: ${money(deposit)}`] : []),
       `• Balance pendiente: ${money(total - deposit)}`,

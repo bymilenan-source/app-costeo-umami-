@@ -1,3 +1,4 @@
+import { orderTotal } from "./orders";
 import type { Order } from "@/lib/types";
 
 // Los clientes se derivan de los pedidos ya guardados (no hay tabla aparte):
@@ -22,7 +23,6 @@ export const clientKey = (name: string, phone: string) => {
   return d.length >= 7 ? `t:${d.slice(-10)}` : `n:${normName(name)}`;
 };
 
-const orderTotal = (o: Order) => (Number(o.unit_price) || 0) * (Number(o.quantity) || 0);
 
 export function deriveClients(orders: Order[]): ClientSummary[] {
   const map = new Map<string, ClientSummary>();

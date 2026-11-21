@@ -64,6 +64,13 @@ export interface RecipeComponent {
   fraction: number;
 }
 
+export interface OrderItem {
+  product_name: string;
+  recipe_id: string | null;
+  quantity: number;
+  unit_price: number;
+}
+
 export interface Order {
   id: string;
   user_id: string;
@@ -79,6 +86,7 @@ export interface Order {
   status: OrderStatus;
   invoice_mode: InvoiceMode;
   ncf: string;
+  items: OrderItem[] | null;
   last_notified_on: string | null;
   created_at: string;
 }

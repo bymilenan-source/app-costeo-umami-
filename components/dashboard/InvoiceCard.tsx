@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { STATUS, TEMPLATES } from "@/lib/constants";
 import { money } from "@/lib/costing";
-import type { Profile, InvoiceMode, OrderStatus } from "@/lib/types";
+import { itemTotal, orderItems } from "@/lib/orders";
+import type { Profile, InvoiceMode, OrderItem, OrderStatus } from "@/lib/types";
 
 export interface InvoiceOrderData {
   client_name: string;
@@ -11,6 +12,8 @@ export interface InvoiceOrderData {
   product_name: string;
   quantity: number;
   unit_price: number;
+  recipe_id?: string | null;
+  items?: OrderItem[] | null;
   delivery_date: string | null;
   notes: string;
   deposit: number;
@@ -58,7 +61,8 @@ function useSquareImage(url: string | undefined | null, size = 192) {
 
 export function InvoiceCard({ profile, order, photoUrl }: { profile: Profile; order: InvoiceOrderData; photoUrl?: string | null }) {
   const t = TEMPLATES.find((x) => x.id === profile.template) || TEMPLATES[0];
-  const total = (Number(order.unit_price) || 0) * (Number(order.quantity) || 0);
+  const items = orderItems(order);
+  const total = items.reduce((s, it) => s + itemTotal(it), 0);
   const deposit = Number(order.deposit) || 0;
   const balance = total - deposit;
   const st = STATUS[order.status];
@@ -123,9 +127,18 @@ export function InvoiceCard({ profile, order, photoUrl }: { profile: Profile; or
             <span>PRODUCTO</span>
             <span>SUBTOTAL</span>
           </div>
-          <div className="flex items-center justify-between text-sm">
-            <span style={{ color: "#332A24" }}>{order.product_name} <span style={{ color: "#9A8B85" }}>x{order.quantity}</span></span>
-            <span style={{ fontFamily: "var(--font-plex-mono)" }}>{money(total)}</span>
+          <div className="space-y-1.5">
+            {items.map((it, i) => (
+              <div key={i} className="flex items-start justify-between gap-3 text-sm">
+                <span style={{ color: "#332A24" }}>
+                  {it.product_name} <span style={{ color: "#9A8B85" }}>x{it.quantity}</span>
+                  {items.length > 1 && (
+                    <span className="block text-[11px]" style={{ color: "#9A8B85" }}>{money(Number(it.unit_price) || 0)} c/u</span>
+                  )}
+                </span>
+                <span className="shrink-0" style={{ fontFamily: "var(--font-plex-mono)" }}>{money(itemTotal(it))}</span>
+              </div>
+            ))}
           </div>
         </div>
 
